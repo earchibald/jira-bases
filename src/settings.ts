@@ -69,7 +69,10 @@ export class JiraBasesSettingTab extends PluginSettingTab {
       .addButton((btn) =>
         btn.setButtonText("Clear token").onClick(async () => {
           const url = this.plugin.settings.baseUrl;
-          if (!url) return;
+          if (!url) {
+            new Notice("Set your JIRA base URL first.");
+            return;
+          }
           await this.plugin.secrets.delete(url);
           new Notice("Token cleared.");
         }),
