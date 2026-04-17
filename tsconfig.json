@@ -11,6 +11,8 @@
     "importHelpers": true,
     "isolatedModules": true,
     "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
     "lib": ["DOM", "ES2022"],
     "types": ["node"]
   },
