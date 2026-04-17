@@ -1,4 +1,5 @@
 import { Plugin, Notice } from "obsidian";
+import { safeStorage } from "electron";
 import { createSecretStore, SecretStore } from "./secret-store";
 import { createJiraClient, JiraError } from "./jira-client";
 import {
@@ -9,10 +10,18 @@ import {
 
 export default class JiraBasesPlugin extends Plugin {
   settings: PluginSettings = DEFAULT_SETTINGS;
-  secrets: SecretStore = createSecretStore();
+  secrets!: SecretStore;
 
   async onload() {
     await this.loadSettings();
+    this.secrets = createSecretStore({
+      safeStorage,
+      load: async () => this.settings.encryptedTokens,
+      save: async (tokens) => {
+        this.settings.encryptedTokens = tokens;
+        await this.saveSettings();
+      },
+    });
     this.addSettingTab(new JiraBasesSettingTab(this.app, this));
     this.addCommand({
       id: "test-connection",

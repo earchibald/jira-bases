@@ -10,7 +10,10 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": ["obsidian", "jira"],
+  "keywords": [
+    "obsidian",
+    "jira"
+  ],
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.11.0",
@@ -20,8 +23,5 @@
     "obsidian": "latest",
     "typescript": "^5.4.0",
     "vitest": "^1.4.0"
-  },
-  "dependencies": {
-    "keytar": "^7.9.0"
   }
 }

@@ -3,10 +3,12 @@ import type JiraBasesPlugin from "./main";
 
 export interface PluginSettings {
   baseUrl: string;
+  encryptedTokens: Record<string, string>;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
   baseUrl: "",
+  encryptedTokens: {},
 };
 
 export class JiraBasesSettingTab extends PluginSettingTab {
@@ -60,10 +62,14 @@ export class JiraBasesSettingTab extends PluginSettingTab {
               new Notice("Enter a token before saving.");
               return;
             }
-            await this.plugin.secrets.set(url, this.pendingToken);
-            this.pendingToken = "";
-            new Notice("Token saved to keychain.");
-            this.display();
+            try {
+              await this.plugin.secrets.set(url, this.pendingToken);
+              this.pendingToken = "";
+              new Notice("Token saved (encrypted).");
+              this.display();
+            } catch (e) {
+              new Notice((e as Error).message);
+            }
           }),
       )
       .addButton((btn) =>
