@@ -74,16 +74,21 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
       }
 
       try {
-        const body = (await response.json()) as Partial<CurrentUser>;
+        const body = (await response.json()) as Record<string, unknown>;
         if (typeof body.displayName !== "string" || typeof body.accountId !== "string") {
-          return { ok: false, error: { kind: "parse", message: "missing fields" } };
+          return {
+            ok: false,
+            error: { kind: "parse", message: "missing displayName or accountId" },
+          };
         }
+        const emailAddress =
+          typeof body.emailAddress === "string" ? body.emailAddress : undefined;
         return {
           ok: true,
           value: {
             displayName: body.displayName,
             accountId: body.accountId,
-            emailAddress: body.emailAddress,
+            emailAddress,
           },
         };
       } catch (e) {

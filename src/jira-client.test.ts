@@ -102,6 +102,17 @@ describe("JiraClient.getCurrentUser", () => {
     if (!result.ok) expect(result.error.kind).toBe("parse");
   });
 
+  it("returns parse error when required fields are missing", async () => {
+    server.use(
+      http.get(`${BASE}/rest/api/2/myself`, () =>
+        HttpResponse.json({ displayName: "E" }),
+      ),
+    );
+    const result = await client("tok").getCurrentUser();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("parse");
+  });
+
   it("returns network error when fetch throws", async () => {
     server.use(
       http.get(`${BASE}/rest/api/2/myself`, () => HttpResponse.error()),
