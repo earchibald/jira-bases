@@ -29,6 +29,8 @@ import { createIssueCache } from "./issue-cache";
 import { createIssueService, IssueService } from "./issue-service";
 import { registerHoverPreview } from "./hover-preview";
 import { LookupModal } from "./lookup-modal";
+import { findKeyAtCol, findKeyInText } from "./jira-key";
+import type { Editor } from "obsidian";
 
 const obsidianRequest: HttpRequest = async ({ url, headers }) => {
   const r = await requestUrl({ url, headers, method: "GET", throw: false });
@@ -86,57 +88,7 @@ export default class JiraBasesPlugin extends Plugin {
     this.addCommand({
       id: "insert-issue-link",
       name: "JIRA: Insert issue link",
-      editorCallback: (editor) => {
-        if (!this.settings.baseUrl) {
-          new Notice("Set your JIRA base URL in plugin settings.");
-          return;
-        }
-        const client = this.makeClient();
-        const baseUrl = this.settings.baseUrl;
-        const modal = new IssueSuggestModal({
-          app: this.app,
-          client,
-          onChoose: (issue: Issue) => {
-            const url = `${baseUrl.replace(/\/+$/, "")}/browse/${issue.key}`;
-            const text = renderTemplate(this.settings.linkTemplate, {
-              key: issue.key,
-              summary: issue.summary,
-              status: issue.status,
-              type: issue.type,
-              url,
-            });
-            editor.replaceSelection(text);
-          },
-        });
-        modal.open();
-      },
-    });
-
-    this.addCommand({
-      id: "link-selection-to-issue",
-      name: "JIRA: Link selection to issue",
-      editorCallback: (editor) => {
-        const selection = editor.getSelection();
-        if (!selection) {
-          new Notice("Select text first, or use 'Insert issue link'.");
-          return;
-        }
-        if (!this.settings.baseUrl) {
-          new Notice("Set your JIRA base URL in plugin settings.");
-          return;
-        }
-        const client = this.makeClient();
-        const baseUrl = this.settings.baseUrl;
-        const modal = new IssueSuggestModal({
-          app: this.app,
-          client,
-          onChoose: (issue: Issue) => {
-            const url = `${baseUrl.replace(/\/+$/, "")}/browse/${issue.key}`;
-            editor.replaceSelection(`[${selection}](${url})`);
-          },
-        });
-        modal.open();
-      },
+      editorCallback: (editor) => this.insertIssueLink(editor),
     });
 
     this.addCommand({
@@ -310,6 +262,70 @@ export default class JiraBasesPlugin extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+
+  async insertIssueLink(editor: Editor): Promise<void> {
+    const baseUrl = this.settings.baseUrl;
+    if (!baseUrl) {
+      new Notice("Set your JIRA base URL in plugin settings.");
+      return;
+    }
+
+    // Establish the effective selection. If the editor has a real selection,
+    // honor it; otherwise, if the cursor is on a JIRA key, expand to that key.
+    let selection = editor.getSelection();
+    if (!selection) {
+      const cursor = editor.getCursor();
+      const line = editor.getLine(cursor.line);
+      const hit = findKeyAtCol(line, cursor.ch);
+      if (hit) {
+        editor.setSelection(
+          { line: cursor.line, ch: hit.start },
+          { line: cursor.line, ch: hit.end },
+        );
+        selection = hit.key;
+      }
+    }
+
+    const detectedKey = selection ? findKeyInText(selection) : null;
+    const baseStripped = baseUrl.replace(/\/+$/, "");
+    const client = this.makeClient();
+
+    // Case A: we know the key — fetch and replace selection with [selection](url).
+    if (detectedKey && selection) {
+      const url = `${baseStripped}/browse/${detectedKey}`;
+      const r = await client.getIssue(detectedKey);
+      if (!r.ok) {
+        new Notice(errorMessage(r.error));
+        return;
+      }
+      editor.replaceSelection(`[${selection}](${url})`);
+      return;
+    }
+
+    // Case B/C: open picker. With selection → wrap; without → render template.
+    const wrapText = selection;
+    const modal = new IssueSuggestModal({
+      app: this.app,
+      client,
+      onChoose: (issue: Issue) => {
+        const url = `${baseStripped}/browse/${issue.key}`;
+        if (wrapText) {
+          editor.replaceSelection(`[${wrapText}](${url})`);
+        } else {
+          editor.replaceSelection(
+            renderTemplate(this.settings.linkTemplate, {
+              key: issue.key,
+              summary: issue.summary,
+              status: issue.status,
+              type: issue.type,
+              url,
+            }),
+          );
+        }
+      },
+    });
+    modal.open();
   }
 
   async testConnection(): Promise<void> {
