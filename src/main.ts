@@ -25,6 +25,10 @@ import {
 } from "./indexer";
 import { writeStub, VaultAdapter } from "./stub-writer";
 import { ConfirmModal } from "./confirm-modal";
+import { createIssueCache } from "./issue-cache";
+import { createIssueService, IssueService } from "./issue-service";
+import { registerHoverPreview } from "./hover-preview";
+import { LookupModal } from "./lookup-modal";
 
 const obsidianRequest: HttpRequest = async ({ url, headers }) => {
   const r = await requestUrl({ url, headers, method: "GET", throw: false });
@@ -58,6 +62,8 @@ export default class JiraBasesPlugin extends Plugin {
   settings: PluginSettings = DEFAULT_SETTINGS;
   secrets!: SecretStore;
   private debouncedRescan: Map<string, () => void> = new Map();
+  private issueCache = createIssueCache();
+  private issueService!: IssueService;
 
   async onload() {
     await this.loadSettings();
@@ -169,6 +175,36 @@ export default class JiraBasesPlugin extends Plugin {
         this.scheduleRescan(file.path);
       }),
     );
+
+    this.issueService = createIssueService(
+      {
+        getCurrentUser: async () => {
+          throw new Error("not used by hover/lookup");
+        },
+        getIssue: async () => {
+          throw new Error("not used by hover/lookup");
+        },
+        searchIssues: async () => {
+          throw new Error("not used by hover/lookup");
+        },
+        getIssueDetails: (key) => this.makeClient().getIssueDetails(key),
+      },
+      this.issueCache,
+    );
+
+    registerHoverPreview(this, this.issueService, () => this.settings.baseUrl ?? "");
+
+    this.addCommand({
+      id: "lookup-issue",
+      name: "JIRA: Look up issue…",
+      callback: () => {
+        if (!this.settings.baseUrl) {
+          new Notice("Set your JIRA base URL in plugin settings.");
+          return;
+        }
+        new LookupModal(this.app, this.issueService, this.settings.baseUrl).open();
+      },
+    });
   }
 
   private scheduleRescan(path: string): void {
@@ -394,13 +430,13 @@ function errorMessage(err: JiraError): string {
       return "Set your JIRA Personal Access Token in plugin settings.";
     case "auth":
       return `Authentication failed (HTTP ${err.status}). Check your PAT.`;
+    case "not-found":
+      return `Issue ${err.key} not found.`;
     case "network":
       return `Could not reach JIRA: ${err.message}.`;
     case "http":
       return `JIRA returned HTTP ${err.status}: ${err.message}.`;
     case "parse":
       return "Unexpected response from JIRA.";
-    case "not-found":
-      return `Issue ${err.key} not found.`;
   }
 }

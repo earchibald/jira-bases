@@ -75,3 +75,10 @@ views:
 ### Non-goals (still)
 
 No writing back to JIRA, no scheduled refresh, no starter `.base` files, no mobile.
+
+## v0.4 — Issue lookup & preview
+
+- **Hover preview** — hover any link to `<your-jira>/browse/<KEY>` (or any link whose visible text starts with a JIRA key in Live Preview) and see issue summary, status, type, priority, assignee, reporter, and last-updated time. Cached for 5 minutes; stale entries refresh in the background.
+- **JIRA: Look up issue…** — command-palette modal that accepts a key (`ABC-123`) or a browse URL and renders the same preview.
+
+The preview uses the same JIRA client as the rest of the plugin — no extra config.
