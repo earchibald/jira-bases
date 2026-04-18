@@ -1,7 +1,26 @@
-import { Plugin, Notice } from "obsidian";
-import { safeStorage } from "electron";
+import { Plugin, Notice, requestUrl } from "obsidian";
 import { createSecretStore, SecretStore } from "./secret-store";
 import { createJiraClient, JiraError } from "./jira-client";
+import type { HttpRequest } from "./jira-client";
+
+function getSafeStorage() {
+  const electron = require("electron");
+  const ss =
+    electron?.remote?.safeStorage ??
+    (() => {
+      try {
+        return require("@electron/remote").safeStorage;
+      } catch {
+        return undefined;
+      }
+    })();
+  if (!ss) {
+    throw new Error(
+      "Electron safeStorage is unavailable in this Obsidian build.",
+    );
+  }
+  return ss;
+}
 import { renderTemplate } from "./template";
 import { IssueSuggestModal } from "./issue-suggest-modal";
 import type { Issue } from "./jira-client";
@@ -18,7 +37,7 @@ export default class JiraBasesPlugin extends Plugin {
   async onload() {
     await this.loadSettings();
     this.secrets = createSecretStore({
-      safeStorage,
+      safeStorage: getSafeStorage(),
       load: async () => this.settings.encryptedTokens,
       save: async (tokens) => {
         this.settings.encryptedTokens = tokens;
@@ -117,12 +136,12 @@ export default class JiraBasesPlugin extends Plugin {
   }
 }
 
-const obsidianRequest = async ({ url, headers }: { url: string; headers: Record<string, string> }) => {
-  const r = await fetch(url, { headers });
+const obsidianRequest: HttpRequest = async ({ url, headers }) => {
+  const r = await requestUrl({ url, headers, method: "GET", throw: false });
   return {
     status: r.status,
-    text: () => r.text(),
-    json: () => r.json(),
+    text: async () => r.text,
+    json: async () => r.json,
   };
 };
 
