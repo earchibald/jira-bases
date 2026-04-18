@@ -157,11 +157,15 @@ function emitYamlSubset(fm: Frontmatter): string | null {
 }
 
 function emitScalar(s: string): string {
-  // Quote if contains any YAML-significant character or leading/trailing space.
+  // Quote if contains YAML-significant structure, whitespace, or special leading chars.
+  // Note: a bare `:` is only YAML-significant when followed by whitespace or at EOL;
+  // URLs like `https://foo` are safe unquoted.
   if (
     s.length === 0 ||
-    /[:#\[\]{}&*!|>'"%@`,]/.test(s) ||
-    /^\s|\s$/.test(s) ||
+    /[#\[\]{}&*!|>'"%@`,]/.test(s) ||
+    /:(\s|$)/.test(s) ||
+    /\s#/.test(s) ||
+    /\s/.test(s) ||
     /^(true|false|null|~|yes|no)$/i.test(s) ||
     /^-?\d/.test(s)
   ) {
