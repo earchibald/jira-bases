@@ -75,6 +75,17 @@ describe("rescanFile", () => {
     expect(d.issues.has("daily.md")).toBe(false);
   });
 
+  it("does not re-match keys already in frontmatter (prunes stale)", async () => {
+    const d = deps(
+      {
+        "daily.md": `---\njira_issues:\n  - SRE-12334\n  - SRE-1234\n  - SRE-1334\n---\nOnly [link](https://jira.me.com/browse/SRE-12334) here.\n`,
+      },
+      { baseUrl: "https://jira.me.com", prefixes: ["SRE"] },
+    );
+    await rescanFile(d, "daily.md");
+    expect(d.issues.get("daily.md")).toEqual(["SRE-12334"]);
+  });
+
   it("uses prefixes for bare-key matching", async () => {
     const d = deps(
       { "daily.md": "See ABC-5 today\n" },

@@ -20,7 +20,8 @@ export async function rescanFile(
   const content = await deps.read(path);
   if (content === null) return;
   const { baseUrl, prefixes } = deps.getSettings();
-  const found = [...findReferences(content, baseUrl, prefixes)].sort();
+  const { body } = readFrontmatter(content);
+  const found = [...findReferences(body, baseUrl, prefixes)].sort();
   await deps.setJiraIssues(path, found);
 }
 
