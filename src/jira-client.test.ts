@@ -204,3 +204,82 @@ describe("JiraClient.getIssue", () => {
     if (!result.ok) expect(result.error.kind).toBe("parse");
   });
 });
+
+describe("JiraClient.searchIssues", () => {
+  it("returns ok with mapped issues on 200", async () => {
+    server.use(
+      http.get(`${BASE}/rest/api/2/search`, ({ request }) => {
+        const url = new URL(request.url);
+        expect(url.searchParams.get("jql")).toBe(
+          'text ~ "fix login" ORDER BY updated DESC',
+        );
+        expect(url.searchParams.get("fields")).toBe(
+          "summary,status,issuetype",
+        );
+        expect(url.searchParams.get("maxResults")).toBe("20");
+        return HttpResponse.json({
+          issues: [
+            {
+              key: "ABC-1",
+              fields: {
+                summary: "Fix login",
+                status: { name: "Open" },
+                issuetype: { name: "Bug" },
+              },
+            },
+          ],
+        });
+      }),
+    );
+    const result = await client("tok").searchIssues("fix login", 20);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toEqual([
+        { key: "ABC-1", summary: "Fix login", status: "Open", type: "Bug" },
+      ]);
+    }
+  });
+
+  it("returns ok with empty list when no issues", async () => {
+    server.use(
+      http.get(`${BASE}/rest/api/2/search`, () =>
+        HttpResponse.json({ issues: [] }),
+      ),
+    );
+    const result = await client("tok").searchIssues("none", 20);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toEqual([]);
+  });
+
+  it("returns http error on 400", async () => {
+    server.use(
+      http.get(`${BASE}/rest/api/2/search`, () =>
+        HttpResponse.text("bad jql", { status: 400 }),
+      ),
+    );
+    const result = await client("tok").searchIssues("x", 20);
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.error.kind === "http") {
+      expect(result.error.status).toBe(400);
+    } else {
+      throw new Error("expected http/400");
+    }
+  });
+
+  it("escapes quotes and backslashes in the JQL", async () => {
+    server.use(
+      http.get(`${BASE}/rest/api/2/search`, ({ request }) => {
+        const url = new URL(request.url);
+        expect(url.searchParams.get("jql")).toBe(
+          'text ~ "he said \\"hi\\" \\\\ bye" ORDER BY updated DESC',
+        );
+        return HttpResponse.json({ issues: [] });
+      }),
+    );
+    const result = await client("tok").searchIssues(
+      'he said "hi" \\ bye',
+      20,
+    );
+    expect(result.ok).toBe(true);
+  });
+});

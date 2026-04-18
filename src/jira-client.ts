@@ -1,3 +1,5 @@
+import { escapeJqlText } from "./issue-suggest-modal";
+
 export type CurrentUser = {
   displayName: string;
   accountId: string;
@@ -37,6 +39,7 @@ export type Result<T, E> =
 export interface JiraClient {
   getCurrentUser(): Promise<Result<CurrentUser, JiraError>>;
   getIssue(key: string): Promise<Result<Issue, JiraError>>;
+  searchIssues(query: string, limit: number): Promise<Result<Issue[], JiraError>>;
 }
 
 export interface JiraClientOptions {
@@ -204,6 +207,84 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
           ok: true,
           value: { key: issueKey, summary, status, type },
         };
+      } catch (e) {
+        return {
+          ok: false,
+          error: { kind: "parse", message: (e as Error).message },
+        };
+      }
+    },
+    async searchIssues(query, limit) {
+      const token = await opts.getToken();
+      if (!token) return { ok: false, error: { kind: "no-token" } };
+
+      const jql = `text ~ "${escapeJqlText(query)}" ORDER BY updated DESC`;
+      const url =
+        `${base}/rest/api/2/search` +
+        `?jql=${encodeURIComponent(jql)}` +
+        `&fields=${encodeURIComponent("summary,status,issuetype")}` +
+        `&maxResults=${limit}`;
+
+      let response: HttpResponseLike;
+      try {
+        response = await request({
+          url,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+        });
+      } catch (e) {
+        return {
+          ok: false,
+          error: { kind: "network", message: (e as Error).message },
+        };
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        return {
+          ok: false,
+          error: {
+            kind: "auth",
+            status: response.status,
+            message: await safeText(response),
+          },
+        };
+      }
+      if (response.status < 200 || response.status >= 300) {
+        return {
+          ok: false,
+          error: {
+            kind: "http",
+            status: response.status,
+            message: await safeText(response),
+          },
+        };
+      }
+
+      try {
+        const body = (await response.json()) as {
+          issues?: Array<{
+            key?: string;
+            fields?: {
+              summary?: string;
+              status?: { name?: string };
+              issuetype?: { name?: string };
+            };
+          }>;
+        };
+        const issues: Issue[] = (body.issues ?? []).flatMap((raw) => {
+          if (typeof raw.key !== "string") return [];
+          const summary = raw.fields?.summary;
+          if (typeof summary !== "string") return [];
+          return [{
+            key: raw.key,
+            summary,
+            status: raw.fields?.status?.name ?? "",
+            type: raw.fields?.issuetype?.name ?? "",
+          }];
+        });
+        return { ok: true, value: issues };
       } catch (e) {
         return {
           ok: false,
