@@ -16,6 +16,7 @@ export class IssueSuggestModal extends SuggestModal<Issue> {
   private readonly onChooseIssue: (issue: Issue) => void;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private requestSeq = 0;
+  private reportedKinds = new Set<string>();
 
   constructor(opts: IssueSuggestModalOptions) {
     super(opts.app);
@@ -70,6 +71,9 @@ export class IssueSuggestModal extends SuggestModal<Issue> {
   }
 
   private reportError(err: JiraError): void {
+    const dedupKey = err.kind === "not-found" ? `not-found:${err.key}` : err.kind;
+    if (this.reportedKinds.has(dedupKey)) return;
+    this.reportedKinds.add(dedupKey);
     switch (err.kind) {
       case "no-token":
         new Notice("Set your JIRA Personal Access Token in plugin settings.");
