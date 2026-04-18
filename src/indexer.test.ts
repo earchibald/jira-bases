@@ -5,24 +5,42 @@ import {
   findOrphanedStubs,
   IndexerDeps,
 } from "./indexer";
+import { readFrontmatter } from "./frontmatter";
 
 function deps(
   initial: Record<string, string>,
   settings = { baseUrl: "https://jira.me.com", prefixes: [] as string[] },
-): IndexerDeps & { files: Map<string, string> } {
+): IndexerDeps & { files: Map<string, string>; issues: Map<string, string[]> } {
   const files = new Map(Object.entries(initial));
+  const issues = new Map<string, string[]>();
+  for (const [path, content] of files) {
+    const { frontmatter } = readFrontmatter(content);
+    if (Array.isArray(frontmatter.jira_issues)) {
+      issues.set(
+        path,
+        (frontmatter.jira_issues as unknown[]).filter(
+          (x): x is string => typeof x === "string",
+        ),
+      );
+    }
+  }
   return {
     files,
+    issues,
     async read(path) {
       return files.has(path) ? files.get(path)! : null;
-    },
-    async write(path, content) {
-      files.set(path, content);
     },
     async listNotes() {
       return [...files.keys()].filter((p) => p.endsWith(".md"));
     },
     getSettings: () => settings,
+    async getJiraIssues(path) {
+      return issues.get(path) ?? [];
+    },
+    async setJiraIssues(path, keys) {
+      if (keys.length === 0) issues.delete(path);
+      else issues.set(path, keys);
+    },
   };
 }
 
@@ -33,18 +51,21 @@ describe("rescanFile", () => {
         "today we looked at [a](https://jira.me.com/browse/ABC-1) and [b](https://jira.me.com/browse/ABC-2)\n",
     });
     await rescanFile(d, "daily.md");
-    expect(d.files.get("daily.md")).toContain(
-      "jira_issues:\n  - ABC-1\n  - ABC-2",
-    );
+    expect(d.issues.get("daily.md")).toEqual(["ABC-1", "ABC-2"]);
   });
 
-  it("is a no-op when keys are already present in the same order", async () => {
+  it("is a no-op when keys match existing", async () => {
     const d = deps({
       "daily.md": `---\njira_issues:\n  - ABC-1\n---\nbody with [a](https://jira.me.com/browse/ABC-1)\n`,
     });
-    const before = d.files.get("daily.md");
+    let writes = 0;
+    const original = d.setJiraIssues;
+    d.setJiraIssues = async (path, keys) => {
+      writes++;
+      await original(path, keys);
+    };
     await rescanFile(d, "daily.md");
-    expect(d.files.get("daily.md")).toBe(before);
+    expect(writes).toBe(0);
   });
 
   it("removes keys that are no longer referenced", async () => {
@@ -52,8 +73,15 @@ describe("rescanFile", () => {
       "daily.md": `---\njira_issues:\n  - ABC-1\n  - ABC-2\n---\nbody only refs [a](https://jira.me.com/browse/ABC-1)\n`,
     });
     await rescanFile(d, "daily.md");
-    expect(d.files.get("daily.md")).toContain("jira_issues:\n  - ABC-1\n");
-    expect(d.files.get("daily.md")).not.toContain("ABC-2");
+    expect(d.issues.get("daily.md")).toEqual(["ABC-1"]);
+  });
+
+  it("clears jira_issues when no references remain", async () => {
+    const d = deps({
+      "daily.md": `---\njira_issues:\n  - ABC-1\n---\nno links now\n`,
+    });
+    await rescanFile(d, "daily.md");
+    expect(d.issues.has("daily.md")).toBe(false);
   });
 
   it("uses prefixes for bare-key matching", async () => {
@@ -62,7 +90,7 @@ describe("rescanFile", () => {
       { baseUrl: "https://jira.me.com", prefixes: ["ABC"] },
     );
     await rescanFile(d, "daily.md");
-    expect(d.files.get("daily.md")).toContain("jira_issues:\n  - ABC-5");
+    expect(d.issues.get("daily.md")).toEqual(["ABC-5"]);
   });
 });
 

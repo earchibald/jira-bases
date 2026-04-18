@@ -1,11 +1,12 @@
 import { findReferences } from "./ref-scanner";
-import { readFrontmatter, writeFrontmatter } from "./frontmatter";
+import { readFrontmatter } from "./frontmatter";
 
 export interface IndexerDeps {
   read(path: string): Promise<string | null>;
-  write(path: string, content: string): Promise<void>;
   listNotes(): Promise<string[]>;
   getSettings(): { baseUrl: string; prefixes: string[] };
+  getJiraIssues(path: string): Promise<string[]>;
+  setJiraIssues(path: string, keys: string[]): Promise<void>;
 }
 
 function sameSet(a: string[], b: string[]): boolean {
@@ -30,14 +31,10 @@ export async function rescanFile(
   const { baseUrl, prefixes } = deps.getSettings();
   const found = [...findReferences(content, baseUrl, prefixes)].sort();
 
-  const { frontmatter } = readFrontmatter(content);
-  const existing = asStringList(frontmatter.jira_issues);
-  if (found.length === 0 && existing.length === 0) return;
+  const existing = await deps.getJiraIssues(path);
   if (sameSet(found, existing)) return;
 
-  const updated = writeFrontmatter(content, { jira_issues: found });
-  if (updated === null) return; // unparseable frontmatter — skip silently
-  await deps.write(path, updated);
+  await deps.setJiraIssues(path, found);
 }
 
 export async function collectAllKeys(

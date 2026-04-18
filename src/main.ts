@@ -136,14 +136,6 @@ export default class JiraBasesPlugin extends Plugin {
         if (!(f instanceof TFile)) return null;
         return this.app.vault.read(f);
       },
-      write: async (path, content) => {
-        const f = this.app.vault.getAbstractFileByPath(path);
-        if (f instanceof TFile) {
-          await this.app.vault.modify(f, content);
-        } else {
-          await this.app.vault.create(path, content);
-        }
-      },
       listNotes: async () => {
         const out: string[] = [];
         const files = this.app.vault.getMarkdownFiles();
@@ -154,6 +146,25 @@ export default class JiraBasesPlugin extends Plugin {
         baseUrl: this.settings.baseUrl,
         prefixes: this.settings.projectPrefixes,
       }),
+      getJiraIssues: async (path) => {
+        const f = this.app.vault.getAbstractFileByPath(path);
+        if (!(f instanceof TFile)) return [];
+        const cache = this.app.metadataCache.getFileCache(f);
+        const raw = cache?.frontmatter?.jira_issues;
+        if (!Array.isArray(raw)) return [];
+        return raw.filter((x): x is string => typeof x === "string");
+      },
+      setJiraIssues: async (path, keys) => {
+        const f = this.app.vault.getAbstractFileByPath(path);
+        if (!(f instanceof TFile)) return;
+        await this.app.fileManager.processFrontMatter(f, (fm) => {
+          if (keys.length === 0) {
+            delete fm.jira_issues;
+          } else {
+            fm.jira_issues = keys;
+          }
+        });
+      },
     };
   }
 
