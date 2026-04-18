@@ -69,5 +69,7 @@ function errorMessage(err: JiraError): string {
       return `JIRA returned HTTP ${err.status}: ${err.message}.`;
     case "parse":
       return "Unexpected response from JIRA.";
+    case "not-found":
+      return `Issue ${err.key} not found.`;
   }
 }
