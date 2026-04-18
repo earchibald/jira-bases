@@ -238,23 +238,32 @@ export default class JiraBasesPlugin extends Plugin {
       return;
     }
     let synced = 0;
-    let failed = 0;
+    const failures: string[] = [];
     for (const key of keys) {
       const r = await client.getIssueDetails(key);
       if (!r.ok) {
-        failed++;
-        console.warn(`jira-bases: ${key} — ${r.error.kind}`);
+        const detail = errorMessage(r.error);
+        failures.push(`${key}: ${detail}`);
+        console.warn(`jira-bases: ${key} — ${r.error.kind}`, r.error);
         continue;
       }
       try {
         await writeStub(vault, this.settings.stubsFolder, r.value);
         synced++;
       } catch (e) {
-        failed++;
+        const msg = (e as Error).message;
+        failures.push(`${key}: write failed — ${msg}`);
         console.warn(`jira-bases: ${key} — write failed`, e);
       }
     }
-    new Notice(`Synced ${synced} stubs (${failed} failed).`);
+    if (failures.length === 0) {
+      new Notice(`Synced ${synced} stubs.`);
+    } else {
+      new Notice(
+        `Synced ${synced} stubs (${failures.length} failed).\nFirst: ${failures[0]}`,
+        10000,
+      );
+    }
   }
 
   async cleanOrphanedStubs(): Promise<void> {
