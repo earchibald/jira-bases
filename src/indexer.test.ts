@@ -34,9 +34,6 @@ function deps(
       return [...files.keys()].filter((p) => p.endsWith(".md"));
     },
     getSettings: () => settings,
-    async getJiraIssues(path) {
-      return issues.get(path) ?? [];
-    },
     async setJiraIssues(path, keys) {
       if (keys.length === 0) issues.delete(path);
       else issues.set(path, keys);
@@ -54,18 +51,12 @@ describe("rescanFile", () => {
     expect(d.issues.get("daily.md")).toEqual(["ABC-1", "ABC-2"]);
   });
 
-  it("is a no-op when keys match existing", async () => {
+  it("calls setJiraIssues with current scan result (idempotency handled at sink)", async () => {
     const d = deps({
       "daily.md": `---\njira_issues:\n  - ABC-1\n---\nbody with [a](https://jira.me.com/browse/ABC-1)\n`,
     });
-    let writes = 0;
-    const original = d.setJiraIssues;
-    d.setJiraIssues = async (path, keys) => {
-      writes++;
-      await original(path, keys);
-    };
     await rescanFile(d, "daily.md");
-    expect(writes).toBe(0);
+    expect(d.issues.get("daily.md")).toEqual(["ABC-1"]);
   });
 
   it("removes keys that are no longer referenced", async () => {

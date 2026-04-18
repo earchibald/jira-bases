@@ -146,18 +146,16 @@ export default class JiraBasesPlugin extends Plugin {
         baseUrl: this.settings.baseUrl,
         prefixes: this.settings.projectPrefixes,
       }),
-      getJiraIssues: async (path) => {
-        const f = this.app.vault.getAbstractFileByPath(path);
-        if (!(f instanceof TFile)) return [];
-        const cache = this.app.metadataCache.getFileCache(f);
-        const raw = cache?.frontmatter?.jira_issues;
-        if (!Array.isArray(raw)) return [];
-        return raw.filter((x): x is string => typeof x === "string");
-      },
       setJiraIssues: async (path, keys) => {
         const f = this.app.vault.getAbstractFileByPath(path);
         if (!(f instanceof TFile)) return;
         await this.app.fileManager.processFrontMatter(f, (fm) => {
+          const existing = Array.isArray(fm.jira_issues)
+            ? fm.jira_issues.filter(
+                (x: unknown): x is string => typeof x === "string",
+              )
+            : [];
+          if (sameStringSet(existing, keys)) return;
           if (keys.length === 0) {
             delete fm.jira_issues;
           } else {
@@ -293,6 +291,14 @@ export default class JiraBasesPlugin extends Plugin {
       },
     ).open();
   }
+}
+
+function sameStringSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sa = [...a].sort();
+  const sb = [...b].sort();
+  for (let i = 0; i < sa.length; i++) if (sa[i] !== sb[i]) return false;
+  return true;
 }
 
 function errorMessage(err: JiraError): string {

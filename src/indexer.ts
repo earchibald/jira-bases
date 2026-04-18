@@ -5,16 +5,7 @@ export interface IndexerDeps {
   read(path: string): Promise<string | null>;
   listNotes(): Promise<string[]>;
   getSettings(): { baseUrl: string; prefixes: string[] };
-  getJiraIssues(path: string): Promise<string[]>;
   setJiraIssues(path: string, keys: string[]): Promise<void>;
-}
-
-function sameSet(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  const sa = [...a].sort();
-  const sb = [...b].sort();
-  for (let i = 0; i < sa.length; i++) if (sa[i] !== sb[i]) return false;
-  return true;
 }
 
 function asStringList(v: unknown): string[] {
@@ -30,10 +21,6 @@ export async function rescanFile(
   if (content === null) return;
   const { baseUrl, prefixes } = deps.getSettings();
   const found = [...findReferences(content, baseUrl, prefixes)].sort();
-
-  const existing = await deps.getJiraIssues(path);
-  if (sameSet(found, existing)) return;
-
   await deps.setJiraIssues(path, found);
 }
 
