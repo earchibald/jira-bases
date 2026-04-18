@@ -48,14 +48,24 @@ function managedPatch(details: IssueDetails): Frontmatter {
   };
 }
 
-function initialBody(details: IssueDetails): string {
+function managedBody(details: IssueDetails): string {
   return `# ${details.key} — ${details.summary}
 
 [Open in JIRA](${details.url})
 
-## Notes
-
 `;
+}
+
+const NOTES_HEADING_RE = /^##\s+Notes\s*$/m;
+
+function splitUserNotes(body: string): string {
+  const match = NOTES_HEADING_RE.exec(body);
+  if (!match) return "## Notes\n\n";
+  return body.slice(match.index);
+}
+
+function renderStubBody(details: IssueDetails, existingBody = ""): string {
+  return managedBody(details) + splitUserNotes(existingBody);
 }
 
 export async function writeStub(
@@ -72,7 +82,9 @@ export async function writeStub(
   if (existingPath !== null) {
     const existing = await vault.read(existingPath);
     if (existing !== null) {
-      const updated = writeFrontmatter(existing, patch);
+      const { frontmatter, body } = readFrontmatter(existing);
+      const rebuilt = renderStubBody(details, body);
+      const updated = writeFrontmatter(rebuilt, { ...frontmatter, ...patch });
       if (updated === null) {
         throw new Error(
           `Could not round-trip frontmatter in ${existingPath}; stub skipped`,
@@ -84,7 +96,7 @@ export async function writeStub(
   }
 
   const path = `${folder}/${stubFileName(details)}`;
-  const withFm = writeFrontmatter(initialBody(details), patch);
+  const withFm = writeFrontmatter(renderStubBody(details), patch);
   if (withFm === null) {
     throw new Error("Failed to emit frontmatter for new stub");
   }

@@ -115,6 +115,42 @@ body
     expect(updated).toContain("custom_tag: mine");
   });
 
+  it("regenerates body above ## Notes on refresh", async () => {
+    const vault = inMemoryVault({
+      "JIRA/ABC-1.md": `---
+jira_key: ABC-1
+jira_summary: old
+jira_status: To Do
+jira_type: Bug
+jira_priority: null
+jira_assignee: null
+jira_reporter: null
+jira_labels: []
+jira_updated: "2026-04-01T00:00:00.000+0000"
+jira_url: https://jira.me.com/browse/ABC-1
+jira_synced_at: "2026-04-01T00:00:00.000Z"
+---
+# ABC-1 — old summary (user edited!)
+
+random user-added text that should not survive
+
+[Open in something else](https://example.com)
+
+## Notes
+
+kept content
+`,
+    });
+    await writeStub(vault, "JIRA", details, "JIRA/ABC-1.md");
+    const updated = vault.files.get("JIRA/ABC-1.md")!;
+    expect(updated).toContain("# ABC-1 — Fix login");
+    expect(updated).toContain("[Open in JIRA](https://jira.me.com/browse/ABC-1)");
+    expect(updated).not.toContain("user edited!");
+    expect(updated).not.toContain("random user-added text");
+    expect(updated).not.toContain("Open in something else");
+    expect(updated).toContain("## Notes\n\nkept content");
+  });
+
   it("creates a new stub with key+summary filename, sanitized", async () => {
     const vault = inMemoryVault();
     const spicy = { ...details, summary: "Fix: login / auth | 403?" };
