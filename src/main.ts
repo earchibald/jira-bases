@@ -291,24 +291,30 @@ export default class JiraBasesPlugin extends Plugin {
     const baseStripped = baseUrl.replace(/\/+$/, "");
     const client = this.makeClient();
 
-    // Case A: we know the key — fetch the issue and replace selection with the
-    // configured linkTemplate.
+    // Case A: we know the key. If the selection is just the bare key, render
+    // the configured linkTemplate (we need the issue's summary etc.).
+    // Otherwise, the selection has surrounding text — preserve it as the
+    // anchor and only build the URL from the detected key.
     if (detectedKey && selection) {
       const url = `${baseStripped}/browse/${detectedKey}`;
-      const r = await client.getIssue(detectedKey);
-      if (!r.ok) {
-        new Notice(errorMessage(r.error));
-        return;
+      if (selection.trim() === detectedKey) {
+        const r = await client.getIssue(detectedKey);
+        if (!r.ok) {
+          new Notice(errorMessage(r.error));
+          return;
+        }
+        editor.replaceSelection(
+          renderTemplate(this.settings.linkTemplate, {
+            key: r.value.key,
+            summary: r.value.summary,
+            status: r.value.status,
+            type: r.value.type,
+            url,
+          }),
+        );
+      } else {
+        editor.replaceSelection(`[${selection}](${url})`);
       }
-      editor.replaceSelection(
-        renderTemplate(this.settings.linkTemplate, {
-          key: r.value.key,
-          summary: r.value.summary,
-          status: r.value.status,
-          type: r.value.type,
-          url,
-        }),
-      );
       return;
     }
 
