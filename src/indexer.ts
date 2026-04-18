@@ -4,13 +4,26 @@ import { readFrontmatter } from "./frontmatter";
 export interface IndexerDeps {
   read(path: string): Promise<string | null>;
   listNotes(): Promise<string[]>;
-  getSettings(): { baseUrl: string; prefixes: string[] };
-  setJiraIssues(path: string, keys: string[]): Promise<void>;
+  getSettings(): {
+    baseUrl: string;
+    prefixes: string[];
+    stubsFolder: string;
+  };
+  setReferences(
+    path: string,
+    keys: string[],
+    links: string[],
+  ): Promise<void>;
 }
 
 function asStringList(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
   return v.filter((x): x is string => typeof x === "string");
+}
+
+function stubWikilink(path: string): string {
+  const withoutExt = path.replace(/\.md$/, "");
+  return `[[${withoutExt}]]`;
 }
 
 export async function rescanFile(
@@ -19,10 +32,15 @@ export async function rescanFile(
 ): Promise<void> {
   const content = await deps.read(path);
   if (content === null) return;
-  const { baseUrl, prefixes } = deps.getSettings();
+  const { baseUrl, prefixes, stubsFolder } = deps.getSettings();
   const { body } = readFrontmatter(content);
   const found = [...findReferences(body, baseUrl, prefixes)].sort();
-  await deps.setJiraIssues(path, found);
+  const stubs = await listStubPaths(deps, stubsFolder);
+  const links = found
+    .map((k) => stubs.get(k))
+    .filter((p): p is string => typeof p === "string")
+    .map(stubWikilink);
+  await deps.setReferences(path, found, links);
 }
 
 export async function collectAllKeys(

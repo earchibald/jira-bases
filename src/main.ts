@@ -146,22 +146,29 @@ export default class JiraBasesPlugin extends Plugin {
       getSettings: () => ({
         baseUrl: this.settings.baseUrl,
         prefixes: this.settings.projectPrefixes,
+        stubsFolder: this.settings.stubsFolder,
       }),
-      setJiraIssues: async (path, keys) => {
+      setReferences: async (path, keys, links) => {
         const f = this.app.vault.getAbstractFileByPath(path);
         if (!(f instanceof TFile)) return;
         await this.app.fileManager.processFrontMatter(f, (fm) => {
-          const existing = Array.isArray(fm.jira_issues)
+          const existingKeys = Array.isArray(fm.jira_issues)
             ? fm.jira_issues.filter(
                 (x: unknown): x is string => typeof x === "string",
               )
             : [];
-          if (sameStringSet(existing, keys)) return;
-          if (keys.length === 0) {
-            delete fm.jira_issues;
-          } else {
-            fm.jira_issues = keys;
-          }
+          const existingLinks = Array.isArray(fm.jira_links)
+            ? fm.jira_links.filter(
+                (x: unknown): x is string => typeof x === "string",
+              )
+            : [];
+          const keysSame = sameStringSet(existingKeys, keys);
+          const linksSame = sameStringSet(existingLinks, links);
+          if (keysSame && linksSame) return;
+          if (keys.length === 0) delete fm.jira_issues;
+          else fm.jira_issues = keys;
+          if (links.length === 0) delete fm.jira_links;
+          else fm.jira_links = links;
         });
       },
     };
@@ -261,6 +268,15 @@ export default class JiraBasesPlugin extends Plugin {
         const msg = (e as Error).message;
         failures.push(`${key}: write failed — ${msg}`);
         console.warn(`jira-bases: ${key} — write failed`, e);
+      }
+    }
+    if (synced > 0) {
+      const prefix = this.settings.stubsFolder.replace(/\/+$/, "") + "/";
+      for (const path of await deps.listNotes()) {
+        if (path.startsWith(prefix)) continue;
+        const content = await deps.read(path);
+        if (content === null) continue;
+        if (content.includes("jira_issues")) await rescanFile(deps, path);
       }
     }
     if (failures.length === 0) {

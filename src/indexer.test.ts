@@ -9,10 +9,19 @@ import { readFrontmatter } from "./frontmatter";
 
 function deps(
   initial: Record<string, string>,
-  settings = { baseUrl: "https://jira.me.com", prefixes: [] as string[] },
-): IndexerDeps & { files: Map<string, string>; issues: Map<string, string[]> } {
+  settings: { baseUrl: string; prefixes: string[]; stubsFolder: string } = {
+    baseUrl: "https://jira.me.com",
+    prefixes: [],
+    stubsFolder: "JIRA",
+  },
+): IndexerDeps & {
+  files: Map<string, string>;
+  issues: Map<string, string[]>;
+  links: Map<string, string[]>;
+} {
   const files = new Map(Object.entries(initial));
   const issues = new Map<string, string[]>();
+  const links = new Map<string, string[]>();
   for (const [path, content] of files) {
     const { frontmatter } = readFrontmatter(content);
     if (Array.isArray(frontmatter.jira_issues)) {
@@ -27,6 +36,7 @@ function deps(
   return {
     files,
     issues,
+    links,
     async read(path) {
       return files.has(path) ? files.get(path)! : null;
     },
@@ -34,9 +44,11 @@ function deps(
       return [...files.keys()].filter((p) => p.endsWith(".md"));
     },
     getSettings: () => settings,
-    async setJiraIssues(path, keys) {
+    async setReferences(path, keys, ls) {
       if (keys.length === 0) issues.delete(path);
       else issues.set(path, keys);
+      if (ls.length === 0) links.delete(path);
+      else links.set(path, ls);
     },
   };
 }
@@ -80,7 +92,7 @@ describe("rescanFile", () => {
       {
         "daily.md": `---\njira_issues:\n  - SRE-12334\n  - SRE-1234\n  - SRE-1334\n---\nOnly [link](https://jira.me.com/browse/SRE-12334) here.\n`,
       },
-      { baseUrl: "https://jira.me.com", prefixes: ["SRE"] },
+      { baseUrl: "https://jira.me.com", prefixes: ["SRE"], stubsFolder: "JIRA" },
     );
     await rescanFile(d, "daily.md");
     expect(d.issues.get("daily.md")).toEqual(["SRE-12334"]);
@@ -89,10 +101,21 @@ describe("rescanFile", () => {
   it("uses prefixes for bare-key matching", async () => {
     const d = deps(
       { "daily.md": "See ABC-5 today\n" },
-      { baseUrl: "https://jira.me.com", prefixes: ["ABC"] },
+      { baseUrl: "https://jira.me.com", prefixes: ["ABC"], stubsFolder: "JIRA" },
     );
     await rescanFile(d, "daily.md");
     expect(d.issues.get("daily.md")).toEqual(["ABC-5"]);
+  });
+
+  it("emits jira_links wikilinks when stubs exist for found keys", async () => {
+    const d = deps({
+      "daily.md":
+        "today [a](https://jira.me.com/browse/ABC-1) and [b](https://jira.me.com/browse/ABC-2)\n",
+      "JIRA/ABC-1 Fix login.md": `---\njira_key: ABC-1\n---\n`,
+    });
+    await rescanFile(d, "daily.md");
+    expect(d.issues.get("daily.md")).toEqual(["ABC-1", "ABC-2"]);
+    expect(d.links.get("daily.md")).toEqual(["[[JIRA/ABC-1 Fix login]]"]);
   });
 });
 
