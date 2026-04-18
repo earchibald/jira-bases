@@ -15,7 +15,11 @@ None of them do quite what I want, which is:
 
 ## Status
 
-v0.1 (foundation slice): PAT auth + "Test connection" command. No features yet — this is the substrate.
+v0.2: Smart link insertion on top of v0.1 foundation.
+
+- **JIRA: Insert issue link** — fuzzy-pick an issue (by key or text) and insert a markdown link using a configurable template.
+- **JIRA: Link selection to issue** — wrap the current selection as a link to the chosen issue.
+- **Link template setting** — customise the inserted text with the tokens `{key}`, `{summary}`, `{status}`, `{type}`, `{url}`. Default: `[{key} {summary}]({url})`. Unknown tokens are left as-is.
 
 ## Install (dev)
 
@@ -32,6 +36,6 @@ v0.1 (foundation slice): PAT auth + "Test connection" command. No features yet �
 
 Run the "JIRA: Test connection" command (or the Test button in settings). You should see "Connected as \<your name\>".
 
-## Scope (v0.1)
+## Scope
 
 Desktop only. PAT only (no OAuth). JIRA Data Center.
