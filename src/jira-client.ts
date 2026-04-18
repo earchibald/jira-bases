@@ -1,4 +1,4 @@
-import { escapeJqlText } from "./issue-suggest-modal";
+import { escapeJqlText } from "./issue-suggest-helpers";
 
 export type CurrentUser = {
   displayName: string;

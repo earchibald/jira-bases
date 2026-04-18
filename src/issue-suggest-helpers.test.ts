@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isIssueKey, escapeJqlText } from "./issue-suggest-modal";
+import { isIssueKey, escapeJqlText } from "./issue-suggest-helpers";
 
 describe("isIssueKey", () => {
   it("accepts standard keys", () => {
