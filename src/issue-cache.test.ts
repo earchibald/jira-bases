@@ -1,16 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createIssueCache, CACHE_TTL_MS } from "./issue-cache";
-import type { Issue } from "./jira-client";
+import type { IssueDetails } from "./jira-fields";
 
-const ISSUE: Issue = {
+const ISSUE: IssueDetails = {
   key: "ABC-1",
   summary: "S",
-  status: { name: "Open", categoryColor: "blue-gray" },
-  issueType: { name: "Task", iconUrl: "u" },
+  status: "Open",
+  type: "Task",
   priority: null,
   assignee: null,
-  reporter: { displayName: "Bob" },
+  reporter: "Bob",
+  labels: [],
   updated: "2026-04-15T10:00:00.000+0000",
+  url: "https://jira.me.com/browse/ABC-1",
 };
 
 describe("IssueCache", () => {

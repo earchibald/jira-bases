@@ -15,7 +15,11 @@ None of them do quite what I want, which is:
 
 ## Status
 
-v0.1 (foundation slice): PAT auth + "Test connection" command. No features yet — this is the substrate.
+v0.2: Smart link insertion on top of v0.1 foundation.
+
+- **JIRA: Insert issue link** — fuzzy-pick an issue (by key or text) and insert a markdown link using a configurable template.
+- **JIRA: Link selection to issue** — wrap the current selection as a link to the chosen issue.
+- **Link template setting** — customise the inserted text with the tokens `{key}`, `{summary}`, `{status}`, `{type}`, `{url}`. Default: `[{key} {summary}]({url})`. Unknown tokens are left as-is.
 
 ## Install (dev)
 
@@ -32,6 +36,42 @@ v0.1 (foundation slice): PAT auth + "Test connection" command. No features yet �
 
 Run the "JIRA: Test connection" command (or the Test button in settings). You should see "Connected as \<your name\>".
 
-## Scope (v0.1)
+## Scope
 
 Desktop only. PAT only (no OAuth). JIRA Data Center.
+
+## v0.3 — Bases index & issue stubs
+
+Lets Obsidian Bases correlate notes and JIRA issues.
+
+### How it works
+
+- On save, the plugin scans the active note for JIRA references — both `[…](<baseUrl>/browse/KEY)` links and (optionally) bare keys like `ABC-1` for project prefixes you've configured — and writes `jira_issues: [KEY, …]` to the note's frontmatter.
+- The command "JIRA: Sync issue stubs" walks every referenced key, fetches current fields from JIRA, and maintains one note per issue under your configured stubs folder (default `JIRA/`). Each stub has a managed frontmatter block plus a `## Notes` section you can edit freely — the plugin never touches content below `## Notes`.
+- "JIRA: Clean orphaned stubs" deletes stubs for issues no longer referenced anywhere.
+
+### Settings
+
+- **Stubs folder** (default `JIRA`) — where issue stubs live.
+- **Project prefixes** (default empty) — comma-separated project prefixes (e.g. `ABC, PROJ`). Required for bare-key matching; link-based matching always works.
+
+### Example `.base`
+
+```yaml
+filters:
+  and:
+    - file.inFolder("JIRA")
+views:
+  - type: table
+    name: "All issues"
+    order:
+      - file.name
+      - jira_status
+      - jira_priority
+      - jira_assignee
+      - jira_updated
+```
+
+### Non-goals (still)
+
+No writing back to JIRA, no scheduled refresh, no starter `.base` files, no mobile.

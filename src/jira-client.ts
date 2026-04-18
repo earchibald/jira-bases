@@ -1,27 +1,37 @@
+import { escapeJqlText } from "./issue-suggest-helpers";
+import { parseIssueDetails, IssueDetails } from "./jira-fields";
+
 export type CurrentUser = {
   displayName: string;
   accountId: string;
   emailAddress?: string;
 };
 
+export interface Issue {
+  key: string;
+  summary: string;
+  status: string;
+  type: string;
+}
+
+export interface HttpResponseLike {
+  status: number;
+  text(): Promise<string>;
+  json(): Promise<unknown>;
+}
+
+export type HttpRequest = (req: {
+  url: string;
+  headers: Record<string, string>;
+}) => Promise<HttpResponseLike>;
+
 export type JiraError =
   | { kind: "no-token" }
   | { kind: "auth"; status: 401 | 403; message: string }
-  | { kind: "not-found"; key: string }
   | { kind: "http"; status: number; message: string }
   | { kind: "network"; message: string }
-  | { kind: "parse"; message: string };
-
-export type Issue = {
-  key: string;
-  summary: string;
-  status: { name: string; categoryColor: string };
-  issueType: { name: string; iconUrl: string };
-  priority: { name: string; iconUrl: string } | null;
-  assignee: { displayName: string } | null;
-  reporter: { displayName: string };
-  updated: string;
-};
+  | { kind: "parse"; message: string }
+  | { kind: "not-found"; key: string };
 
 export type Result<T, E> =
   | { ok: true; value: T }
@@ -30,32 +40,27 @@ export type Result<T, E> =
 export interface JiraClient {
   getCurrentUser(): Promise<Result<CurrentUser, JiraError>>;
   getIssue(key: string): Promise<Result<Issue, JiraError>>;
+  searchIssues(query: string, limit: number): Promise<Result<Issue[], JiraError>>;
+  getIssueDetails(key: string): Promise<Result<IssueDetails, JiraError>>;
 }
-
-type HttpResponseLike = {
-  status: number;
-  ok: boolean;
-  json(): Promise<unknown>;
-  text(): Promise<string>;
-};
-
-type RequestFn = (opts: {
-  url: string;
-  headers: Record<string, string>;
-}) => Promise<HttpResponseLike>;
 
 export interface JiraClientOptions {
   baseUrl: string;
   getToken: () => Promise<string | null>;
-  request?: RequestFn;
+  request?: HttpRequest;
 }
+
+const defaultRequest: HttpRequest = async ({ url, headers }) => {
+  const response = await fetch(url, { headers });
+  return {
+    status: response.status,
+    text: () => response.text(),
+    json: () => response.json() as Promise<unknown>,
+  };
+};
 
 function normalizeBase(url: string): string {
   return url.replace(/\/+$/, "");
-}
-
-function defaultRequest(opts: { url: string; headers: Record<string, string> }): Promise<HttpResponseLike> {
-  return fetch(opts.url, { headers: opts.headers });
 }
 
 export function createJiraClient(opts: JiraClientOptions): JiraClient {
@@ -88,13 +93,13 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
           ok: false,
           error: {
             kind: "auth",
-            status: response.status,
+            status: response.status as 401 | 403,
             message: await safeText(response),
           },
         };
       }
 
-      if (!response.ok) {
+      if (response.status < 200 || response.status >= 300) {
         return {
           ok: false,
           error: {
@@ -107,10 +112,18 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
 
       try {
         const body = (await response.json()) as Record<string, unknown>;
-        if (typeof body.displayName !== "string" || typeof body.accountId !== "string") {
+        const accountId =
+          typeof body.accountId === "string"
+            ? body.accountId
+            : typeof body.key === "string"
+              ? body.key
+              : typeof body.name === "string"
+                ? body.name
+                : undefined;
+        if (typeof body.displayName !== "string" || !accountId) {
           return {
             ok: false,
-            error: { kind: "parse", message: "missing displayName or accountId" },
+            error: { kind: "parse", message: "missing displayName or account identifier" },
           };
         }
         const emailAddress =
@@ -119,7 +132,7 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
           ok: true,
           value: {
             displayName: body.displayName,
-            accountId: body.accountId,
+            accountId,
             emailAddress,
           },
         };
@@ -132,18 +145,22 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
       const token = await opts.getToken();
       if (!token) return { ok: false, error: { kind: "no-token" } };
 
-      const fields = "summary,status,issuetype,priority,assignee,reporter,updated";
       let response: HttpResponseLike;
       try {
         response = await request({
-          url: `${base}/rest/api/2/issue/${encodeURIComponent(key)}?fields=${fields}`,
+          url: `${base}/rest/api/2/issue/${encodeURIComponent(
+            key,
+          )}?fields=summary,status,issuetype`,
           headers: {
             Authorization: `Bearer ${token}`,
             Accept: "application/json",
           },
         });
       } catch (e) {
-        return { ok: false, error: { kind: "network", message: (e as Error).message } };
+        return {
+          ok: false,
+          error: { kind: "network", message: (e as Error).message },
+        };
       }
 
       if (response.status === 404) {
@@ -152,59 +169,192 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
       if (response.status === 401 || response.status === 403) {
         return {
           ok: false,
-          error: { kind: "auth", status: response.status, message: await safeText(response) },
+          error: {
+            kind: "auth",
+            status: response.status as 401 | 403,
+            message: await safeText(response),
+          },
         };
       }
       if (response.status < 200 || response.status >= 300) {
         return {
           ok: false,
-          error: { kind: "http", status: response.status, message: await safeText(response) },
+          error: {
+            kind: "http",
+            status: response.status,
+            message: await safeText(response),
+          },
         };
       }
 
       try {
-        const body = (await response.json()) as { key?: unknown; fields?: Record<string, unknown> };
-        const f = body.fields;
-        if (!f || typeof body.key !== "string") {
-          return { ok: false, error: { kind: "parse", message: "missing key or fields" } };
+        const body = (await response.json()) as {
+          key?: string;
+          fields?: {
+            summary?: string;
+            status?: { name?: string };
+            issuetype?: { name?: string };
+          };
+        };
+        const issueKey = body.key ?? key;
+        const summary = body.fields?.summary;
+        const status = body.fields?.status?.name ?? "";
+        const type = body.fields?.issuetype?.name ?? "";
+        if (typeof summary !== "string") {
+          return {
+            ok: false,
+            error: { kind: "parse", message: "missing summary" },
+          };
         }
-        const summary = typeof f.summary === "string" ? f.summary : null;
-        const status = f.status as { name?: string; statusCategory?: { colorName?: string } } | undefined;
-        const issuetype = f.issuetype as { name?: string; iconUrl?: string } | undefined;
-        const reporter = f.reporter as { displayName?: string } | undefined;
-        const updated = typeof f.updated === "string" ? f.updated : null;
-        if (
-          !summary ||
-          !status?.name ||
-          !status.statusCategory?.colorName ||
-          !issuetype?.name ||
-          !issuetype.iconUrl ||
-          !reporter?.displayName ||
-          !updated
-        ) {
-          return { ok: false, error: { kind: "parse", message: "missing required fields" } };
-        }
-        const priorityRaw = f.priority as { name?: string; iconUrl?: string } | null | undefined;
-        const assigneeRaw = f.assignee as { displayName?: string } | null | undefined;
         return {
           ok: true,
-          value: {
-            key: body.key,
-            summary,
-            status: { name: status.name, categoryColor: status.statusCategory.colorName },
-            issueType: { name: issuetype.name, iconUrl: issuetype.iconUrl },
-            priority:
-              priorityRaw && priorityRaw.name && priorityRaw.iconUrl
-                ? { name: priorityRaw.name, iconUrl: priorityRaw.iconUrl }
-                : null,
-            assignee:
-              assigneeRaw && assigneeRaw.displayName
-                ? { displayName: assigneeRaw.displayName }
-                : null,
-            reporter: { displayName: reporter.displayName },
-            updated,
+          value: { key: issueKey, summary, status, type },
+        };
+      } catch (e) {
+        return {
+          ok: false,
+          error: { kind: "parse", message: (e as Error).message },
+        };
+      }
+    },
+
+    async searchIssues(query, limit) {
+      const token = await opts.getToken();
+      if (!token) return { ok: false, error: { kind: "no-token" } };
+
+      const jql = `text ~ "${escapeJqlText(query)}" ORDER BY updated DESC`;
+      const url =
+        `${base}/rest/api/2/search` +
+        `?jql=${encodeURIComponent(jql)}` +
+        `&fields=${encodeURIComponent("summary,status,issuetype")}` +
+        `&maxResults=${limit}`;
+
+      let response: HttpResponseLike;
+      try {
+        response = await request({
+          url,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+        });
+      } catch (e) {
+        return {
+          ok: false,
+          error: { kind: "network", message: (e as Error).message },
+        };
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        return {
+          ok: false,
+          error: {
+            kind: "auth",
+            status: response.status as 401 | 403,
+            message: await safeText(response),
           },
         };
+      }
+      if (response.status < 200 || response.status >= 300) {
+        return {
+          ok: false,
+          error: {
+            kind: "http",
+            status: response.status,
+            message: await safeText(response),
+          },
+        };
+      }
+
+      try {
+        const body = (await response.json()) as {
+          issues?: Array<{
+            key?: string;
+            fields?: {
+              summary?: string;
+              status?: { name?: string };
+              issuetype?: { name?: string };
+            };
+          }>;
+        };
+        const issues: Issue[] = (body.issues ?? []).flatMap((raw) => {
+          if (typeof raw.key !== "string") return [];
+          const summary = raw.fields?.summary;
+          if (typeof summary !== "string") return [];
+          return [{
+            key: raw.key,
+            summary,
+            status: raw.fields?.status?.name ?? "",
+            type: raw.fields?.issuetype?.name ?? "",
+          }];
+        });
+        return { ok: true, value: issues };
+      } catch (e) {
+        return {
+          ok: false,
+          error: { kind: "parse", message: (e as Error).message },
+        };
+      }
+    },
+
+    async getIssueDetails(key) {
+      const token = await opts.getToken();
+      if (!token) return { ok: false, error: { kind: "no-token" } };
+
+      const fields =
+        "summary,status,issuetype,priority,assignee,reporter,labels,updated";
+      const url = `${base}/rest/api/2/issue/${encodeURIComponent(key)}?fields=${fields}`;
+
+      let response: HttpResponseLike;
+      try {
+        response = await request({
+          url,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+        });
+      } catch (e) {
+        return {
+          ok: false,
+          error: { kind: "network", message: (e as Error).message },
+        };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, error: { kind: "not-found", key } };
+      }
+      if (response.status === 401 || response.status === 403) {
+        return {
+          ok: false,
+          error: {
+            kind: "auth",
+            status: response.status as 401 | 403,
+            message: await safeText(response),
+          },
+        };
+      }
+      if (response.status < 200 || response.status >= 300) {
+        return {
+          ok: false,
+          error: {
+            kind: "http",
+            status: response.status,
+            message: await safeText(response),
+          },
+        };
+      }
+
+      try {
+        const body = (await response.json()) as unknown;
+        const details = parseIssueDetails(body, base);
+        if (!details) {
+          return {
+            ok: false,
+            error: { kind: "parse", message: "malformed issue payload" },
+          };
+        }
+        return { ok: true, value: details };
       } catch (e) {
         return { ok: false, error: { kind: "parse", message: (e as Error).message } };
       }

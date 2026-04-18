@@ -1,17 +1,19 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from "vitest";
 import { renderIssue } from "./issue-preview-view";
-import type { Issue } from "./jira-client";
+import type { IssueDetails } from "./jira-fields";
 
-const ISSUE: Issue = {
+const ISSUE: IssueDetails = {
   key: "ABC-1",
   summary: "A sample issue",
-  status: { name: "In Progress", categoryColor: "yellow" },
-  issueType: { name: "Task", iconUrl: "https://jira.me.com/it.png" },
-  priority: { name: "High", iconUrl: "https://jira.me.com/p.png" },
-  assignee: { displayName: "Alice" },
-  reporter: { displayName: "Bob" },
+  status: "In Progress",
+  type: "Task",
+  priority: "High",
+  assignee: "Alice",
+  reporter: "Bob",
+  labels: [],
   updated: "2026-04-15T10:00:00.000+0000",
+  url: "https://jira.me.com/browse/ABC-1",
 };
 
 const CTX = { baseUrl: "https://jira.me.com" };

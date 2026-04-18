@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
 import { setupServer } from "msw/node";
 import { http, HttpResponse } from "msw";
 import { createJiraClient } from "./jira-client";
+import type { HttpRequest } from "./jira-client";
 
 const BASE = "https://jira.me.com";
 
@@ -138,118 +139,254 @@ describe("JiraClient.getCurrentUser", () => {
 });
 
 describe("JiraClient.getIssue", () => {
-  it("returns ok with mapped issue on 200", async () => {
+  it("returns ok with issue fields on 200", async () => {
     server.use(
       http.get(`${BASE}/rest/api/2/issue/ABC-123`, ({ request }) => {
         const url = new URL(request.url);
         expect(url.searchParams.get("fields")).toBe(
-          "summary,status,issuetype,priority,assignee,reporter,updated",
+          "summary,status,issuetype",
         );
-        expect(request.headers.get("Authorization")).toBe("Bearer tok-abc");
         return HttpResponse.json({
           key: "ABC-123",
           fields: {
-            summary: "A sample issue",
-            status: { name: "In Progress", statusCategory: { colorName: "yellow" } },
-            issuetype: { name: "Task", iconUrl: "https://jira.me.com/it.png" },
-            priority: { name: "High", iconUrl: "https://jira.me.com/p.png" },
-            assignee: { displayName: "Alice" },
-            reporter: { displayName: "Bob" },
-            updated: "2026-04-15T10:00:00.000+0000",
+            summary: "Fix login",
+            status: { name: "In Progress" },
+            issuetype: { name: "Bug" },
           },
         });
       }),
     );
-    const result = await client("tok-abc").getIssue("ABC-123");
+    const result = await client("tok").getIssue("ABC-123");
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value).toEqual({
         key: "ABC-123",
-        summary: "A sample issue",
-        status: { name: "In Progress", categoryColor: "yellow" },
-        issueType: { name: "Task", iconUrl: "https://jira.me.com/it.png" },
-        priority: { name: "High", iconUrl: "https://jira.me.com/p.png" },
-        assignee: { displayName: "Alice" },
-        reporter: { displayName: "Bob" },
-        updated: "2026-04-15T10:00:00.000+0000",
+        summary: "Fix login",
+        status: "In Progress",
+        type: "Bug",
       });
     }
   });
 
-  it("maps null assignee and missing priority", async () => {
+  it("returns not-found error on 404", async () => {
     server.use(
-      http.get(`${BASE}/rest/api/2/issue/ABC-1`, () =>
-        HttpResponse.json({
-          key: "ABC-1",
-          fields: {
-            summary: "S",
-            status: { name: "Open", statusCategory: { colorName: "blue-gray" } },
-            issuetype: { name: "Bug", iconUrl: "u" },
-            priority: null,
-            assignee: null,
-            reporter: { displayName: "Bob" },
-            updated: "2026-04-15T10:00:00.000+0000",
-          },
-        }),
+      http.get(`${BASE}/rest/api/2/issue/NOPE-1`, () =>
+        HttpResponse.text("missing", { status: 404 }),
       ),
     );
-    const result = await client("tok-abc").getIssue("ABC-1");
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.value.assignee).toBeNull();
-      expect(result.value.priority).toBeNull();
+    const result = await client("tok").getIssue("NOPE-1");
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.error.kind === "not-found") {
+      expect(result.error.key).toBe("NOPE-1");
+    } else {
+      throw new Error("expected not-found");
     }
   });
 
-  it("returns not-found on 404", async () => {
-    server.use(
-      http.get(`${BASE}/rest/api/2/issue/XYZ-9`, () =>
-        new HttpResponse(null, { status: 404 }),
-      ),
-    );
-    const result = await client("tok-abc").getIssue("XYZ-9");
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toEqual({ kind: "not-found", key: "XYZ-9" });
-  });
-
-  it("returns auth on 401", async () => {
+  it("returns auth error on 401", async () => {
     server.use(
       http.get(`${BASE}/rest/api/2/issue/ABC-1`, () =>
-        new HttpResponse("nope", { status: 401 }),
+        HttpResponse.text("nope", { status: 401 }),
       ),
     );
-    const result = await client("tok-abc").getIssue("ABC-1");
+    const result = await client("tok").getIssue("ABC-1");
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.kind).toBe("auth");
   });
 
-  it("returns network on fetch throw", async () => {
-    const c = createJiraClient({
-      baseUrl: BASE,
-      getToken: async () => "tok",
-      request: async () => {
-        throw new Error("offline");
-      },
-    });
-    const result = await c.getIssue("ABC-1");
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toEqual({ kind: "network", message: "offline" });
-  });
-
-  it("returns parse on malformed body", async () => {
+  it("returns parse error when summary is missing", async () => {
     server.use(
-      http.get(`${BASE}/rest/api/2/issue/ABC-1`, () =>
-        HttpResponse.json({ key: "ABC-1" /* no fields */ }),
+      http.get(`${BASE}/rest/api/2/issue/ABC-2`, () =>
+        HttpResponse.json({ key: "ABC-2", fields: {} }),
       ),
     );
-    const result = await client("tok-abc").getIssue("ABC-1");
+    const result = await client("tok").getIssue("ABC-2");
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.kind).toBe("parse");
   });
+});
 
-  it("returns no-token when token missing", async () => {
-    const result = await client(null).getIssue("ABC-1");
+describe("JiraClient.searchIssues", () => {
+  it("returns ok with mapped issues on 200", async () => {
+    server.use(
+      http.get(`${BASE}/rest/api/2/search`, ({ request }) => {
+        const url = new URL(request.url);
+        expect(url.searchParams.get("jql")).toBe(
+          'text ~ "fix login" ORDER BY updated DESC',
+        );
+        expect(url.searchParams.get("fields")).toBe(
+          "summary,status,issuetype",
+        );
+        expect(url.searchParams.get("maxResults")).toBe("20");
+        return HttpResponse.json({
+          issues: [
+            {
+              key: "ABC-1",
+              fields: {
+                summary: "Fix login",
+                status: { name: "Open" },
+                issuetype: { name: "Bug" },
+              },
+            },
+          ],
+        });
+      }),
+    );
+    const result = await client("tok").searchIssues("fix login", 20);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toEqual([
+        { key: "ABC-1", summary: "Fix login", status: "Open", type: "Bug" },
+      ]);
+    }
+  });
+
+  it("returns ok with empty list when no issues", async () => {
+    server.use(
+      http.get(`${BASE}/rest/api/2/search`, () =>
+        HttpResponse.json({ issues: [] }),
+      ),
+    );
+    const result = await client("tok").searchIssues("none", 20);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toEqual([]);
+  });
+
+  it("returns http error on 400", async () => {
+    server.use(
+      http.get(`${BASE}/rest/api/2/search`, () =>
+        HttpResponse.text("bad jql", { status: 400 }),
+      ),
+    );
+    const result = await client("tok").searchIssues("x", 20);
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toEqual({ kind: "no-token" });
+    if (!result.ok && result.error.kind === "http") {
+      expect(result.error.status).toBe(400);
+    } else {
+      throw new Error("expected http/400");
+    }
+  });
+
+  it("escapes quotes and backslashes in the JQL", async () => {
+    server.use(
+      http.get(`${BASE}/rest/api/2/search`, ({ request }) => {
+        const url = new URL(request.url);
+        expect(url.searchParams.get("jql")).toBe(
+          'text ~ "he said \\"hi\\" \\\\ bye" ORDER BY updated DESC',
+        );
+        return HttpResponse.json({ issues: [] });
+      }),
+    );
+    const result = await client("tok").searchIssues(
+      'he said "hi" \\ bye',
+      20,
+    );
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe("JiraClient.getIssueDetails", () => {
+
+  function mkRequest(
+    handler: (url: string, headers: Record<string, string>) => {
+      status: number;
+      body: unknown;
+    },
+  ): HttpRequest {
+    return async ({ url, headers }) => {
+      const res = handler(url, headers);
+      return {
+        status: res.status,
+        text: async () =>
+          typeof res.body === "string" ? res.body : JSON.stringify(res.body),
+        json: async () => res.body,
+      };
+    };
+  }
+
+  const fullPayload = {
+    key: "ABC-1",
+    fields: {
+      summary: "Fix login",
+      status: { name: "In Progress" },
+      issuetype: { name: "Bug" },
+      priority: { name: "High" },
+      assignee: { displayName: "Eugene" },
+      reporter: { displayName: "Colleague" },
+      labels: ["frontend"],
+      updated: "2026-04-15T09:22:00.000+0000",
+    },
+  };
+
+  it("returns ok with parsed details on 200", async () => {
+    let sawUrl = "";
+    const client = createJiraClient({
+      baseUrl: BASE,
+      getToken: async () => "tok",
+      request: mkRequest((url) => {
+        sawUrl = url;
+        return { status: 200, body: fullPayload };
+      }),
+    });
+    const r = await client.getIssueDetails("ABC-1");
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.key).toBe("ABC-1");
+      expect(r.value.url).toBe("https://jira.me.com/browse/ABC-1");
+    }
+    expect(sawUrl).toContain(
+      "/rest/api/2/issue/ABC-1?fields=summary,status,issuetype,priority,assignee,reporter,labels,updated",
+    );
+  });
+
+  it("returns not-found on 404", async () => {
+    const client = createJiraClient({
+      baseUrl: BASE,
+      getToken: async () => "tok",
+      request: mkRequest(() => ({ status: 404, body: "no" })),
+    });
+    const r = await client.getIssueDetails("ABC-1");
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error.kind).toBe("not-found");
+      if (r.error.kind === "not-found") expect(r.error.key).toBe("ABC-1");
+    }
+  });
+
+  it("returns auth on 401", async () => {
+    const client = createJiraClient({
+      baseUrl: BASE,
+      getToken: async () => "tok",
+      request: mkRequest(() => ({ status: 401, body: "no" })),
+    });
+    const r = await client.getIssueDetails("ABC-1");
+    expect(r.ok).toBe(false);
+    if (!r.ok && r.error.kind === "auth") {
+      expect(r.error.status).toBe(401);
+    } else {
+      throw new Error("expected auth/401");
+    }
+  });
+
+  it("returns parse when fields are missing", async () => {
+    const client = createJiraClient({
+      baseUrl: BASE,
+      getToken: async () => "tok",
+      request: mkRequest(() => ({ status: 200, body: { key: "ABC-1" } })),
+    });
+    const r = await client.getIssueDetails("ABC-1");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.kind).toBe("parse");
+  });
+
+  it("returns no-token when token is null", async () => {
+    const client = createJiraClient({
+      baseUrl: BASE,
+      getToken: async () => null,
+      request: mkRequest(() => ({ status: 200, body: fullPayload })),
+    });
+    const r = await client.getIssueDetails("ABC-1");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.kind).toBe("no-token");
   });
 });

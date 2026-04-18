@@ -4,11 +4,19 @@ import type JiraBasesPlugin from "./main";
 export interface PluginSettings {
   baseUrl: string;
   encryptedTokens: Record<string, string>;
+  linkTemplate: string;
+  stubsFolder: string;
+  projectPrefixes: string[];
 }
+
+export const DEFAULT_LINK_TEMPLATE = "[{key} {summary}]({url})";
 
 export const DEFAULT_SETTINGS: PluginSettings = {
   baseUrl: "",
   encryptedTokens: {},
+  linkTemplate: DEFAULT_LINK_TEMPLATE,
+  stubsFolder: "JIRA",
+  projectPrefixes: [],
 };
 
 export class JiraBasesSettingTab extends PluginSettingTab {
@@ -92,6 +100,60 @@ export class JiraBasesSettingTab extends PluginSettingTab {
           .setButtonText("Test")
           .setCta()
           .onClick(() => this.plugin.testConnection()),
+      );
+
+    new Setting(containerEl)
+      .setName("Link template")
+      .setDesc(
+        "Tokens: {key}, {summary}, {status}, {type}, {url}. Unknown tokens are left as-is.",
+      )
+      .addText((text) =>
+        text
+          .setPlaceholder(DEFAULT_LINK_TEMPLATE)
+          .setValue(this.plugin.settings.linkTemplate)
+          .onChange(async (value) => {
+            this.plugin.settings.linkTemplate = value;
+            await this.plugin.saveSettings();
+          }),
+      )
+      .addButton((btn) =>
+        btn.setButtonText("Reset to default").onClick(async () => {
+          this.plugin.settings.linkTemplate = DEFAULT_LINK_TEMPLATE;
+          await this.plugin.saveSettings();
+          this.display();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Stubs folder")
+      .setDesc("Folder for per-issue stub notes (relative to vault root).")
+      .addText((text) =>
+        text
+          .setPlaceholder("JIRA")
+          .setValue(this.plugin.settings.stubsFolder)
+          .onChange(async (value) => {
+            const trimmed = value.trim().replace(/^\/+|\/+$/g, "");
+            this.plugin.settings.stubsFolder = trimmed || "JIRA";
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Project prefixes")
+      .setDesc(
+        "Comma-separated JIRA project prefixes (e.g. ABC, PROJ). Enables bare-key matching for these prefixes. Leave empty to match only explicit issue links.",
+      )
+      .addText((text) =>
+        text
+          .setPlaceholder("ABC, PROJ")
+          .setValue(this.plugin.settings.projectPrefixes.join(", "))
+          .onChange(async (value) => {
+            this.plugin.settings.projectPrefixes = value
+              .split(",")
+              .map((s) => s.trim().toUpperCase())
+              .filter((s) => /^[A-Z][A-Z0-9]+$/.test(s));
+            await this.plugin.saveSettings();
+          }),
       );
   }
 }

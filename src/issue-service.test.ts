@@ -1,25 +1,34 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createIssueService, LookupResult } from "./issue-service";
 import { createIssueCache, CACHE_TTL_MS } from "./issue-cache";
-import type { Issue, JiraClient, Result, JiraError } from "./jira-client";
+import type { JiraClient, Result, JiraError } from "./jira-client";
+import type { IssueDetails } from "./jira-fields";
 
-const ISSUE: Issue = {
+const ISSUE: IssueDetails = {
   key: "ABC-1",
   summary: "S",
-  status: { name: "Open", categoryColor: "blue-gray" },
-  issueType: { name: "Task", iconUrl: "u" },
+  status: "Open",
+  type: "Task",
   priority: null,
   assignee: null,
-  reporter: { displayName: "Bob" },
+  reporter: "Bob",
+  labels: [],
   updated: "2026-04-15T10:00:00.000+0000",
+  url: "https://jira.me.com/browse/ABC-1",
 };
 
-function fakeClient(impl: (key: string) => Promise<Result<Issue, JiraError>>): JiraClient {
+function fakeClient(impl: (key: string) => Promise<Result<IssueDetails, JiraError>>): JiraClient {
   return {
     async getCurrentUser() {
       throw new Error("not used");
     },
-    getIssue: vi.fn(impl) as JiraClient["getIssue"],
+    async getIssue() {
+      throw new Error("not used");
+    },
+    async searchIssues() {
+      throw new Error("not used");
+    },
+    getIssueDetails: vi.fn(impl) as JiraClient["getIssueDetails"],
   };
 }
 
@@ -70,7 +79,7 @@ describe("IssueService.lookup", () => {
     const cache = createIssueCache();
     cache.set("ABC-1", ISSUE);
     vi.advanceTimersByTime(CACHE_TTL_MS + 1);
-    const fresh: Issue = { ...ISSUE, summary: "Updated" };
+    const fresh: IssueDetails = { ...ISSUE, summary: "Updated" };
     const client = fakeClient(async () => ({ ok: true, value: fresh }));
     const svc = createIssueService(client, cache);
     const calls: LookupResult[] = [];

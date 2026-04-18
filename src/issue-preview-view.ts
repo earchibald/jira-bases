@@ -1,4 +1,5 @@
-import type { Issue, JiraError } from "./jira-client";
+import type { JiraError } from "./jira-client";
+import type { IssueDetails } from "./jira-fields";
 import type { LookupResult } from "./issue-service";
 
 export interface RenderCtx {
@@ -26,7 +27,7 @@ export function renderIssue(el: HTMLElement, state: LookupResult, ctx: RenderCtx
   }
 }
 
-function renderOk(el: HTMLElement, issue: Issue, ctx: RenderCtx): void {
+function renderOk(el: HTMLElement, issue: IssueDetails, ctx: RenderCtx): void {
   const baseUrl = ctx.baseUrl.replace(/\/+$/, "");
 
   const header = append(el, "div", "jb-header");
@@ -41,18 +42,13 @@ function renderOk(el: HTMLElement, issue: Issue, ctx: RenderCtx): void {
   append(el, "div", "jb-summary", issue.summary);
 
   const meta = append(el, "div", "jb-meta");
-  append(meta, "span", "jb-status", issue.status.name).dataset.color =
-    issue.status.categoryColor;
-  append(meta, "span", "jb-issuetype", issue.issueType.name);
-  if (issue.priority) {
-    append(meta, "span", "jb-priority", issue.priority.name);
-  } else {
-    append(meta, "span", "jb-priority", "No priority");
-  }
+  append(meta, "span", "jb-status", issue.status);
+  append(meta, "span", "jb-issuetype", issue.type);
+  append(meta, "span", "jb-priority", issue.priority ?? "No priority");
 
   const people = append(el, "div", "jb-people");
-  append(people, "span", "jb-assignee", issue.assignee?.displayName ?? "Unassigned");
-  append(people, "span", "jb-reporter", `Reporter: ${issue.reporter.displayName}`);
+  append(people, "span", "jb-assignee", issue.assignee ?? "Unassigned");
+  append(people, "span", "jb-reporter", `Reporter: ${issue.reporter ?? "—"}`);
 
   append(el, "div", "jb-updated", `Updated ${formatRelative(issue.updated)}`);
 }

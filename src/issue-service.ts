@@ -1,10 +1,11 @@
-import type { Issue, JiraClient, JiraError, Result } from "./jira-client";
+import type { JiraClient, JiraError, Result } from "./jira-client";
+import type { IssueDetails } from "./jira-fields";
 import type { IssueCache } from "./issue-cache";
 
 export type LookupResult =
   | { state: "loading" }
-  | { state: "ok"; issue: Issue; refreshing: false }
-  | { state: "stale"; issue: Issue; refreshing: true }
+  | { state: "ok"; issue: IssueDetails; refreshing: false }
+  | { state: "stale"; issue: IssueDetails; refreshing: true }
   | { state: "error"; error: JiraError };
 
 export interface IssueService {
@@ -12,10 +13,10 @@ export interface IssueService {
 }
 
 export function createIssueService(client: JiraClient, cache: IssueCache): IssueService {
-  function fetchAndCache(key: string): Promise<Result<Issue, JiraError>> {
+  function fetchAndCache(key: string): Promise<Result<IssueDetails, JiraError>> {
     const existing = cache.inflight(key);
     if (existing) return existing;
-    const p = client.getIssue(key).then((r) => {
+    const p = client.getIssueDetails(key).then((r) => {
       if (r.ok) cache.set(key, r.value);
       return r;
     });
@@ -34,7 +35,6 @@ export function createIssueService(client: JiraClient, cache: IssueCache): Issue
         onUpdate({ state: "stale", issue: hit.issue, refreshing: true });
         void fetchAndCache(key).then((r) => {
           if (r.ok) onUpdate({ state: "ok", issue: r.value, refreshing: false });
-          // On refetch error: emit nothing, keep showing stale data.
         });
         return;
       }
