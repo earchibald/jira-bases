@@ -62,9 +62,10 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
       const token = await opts.getToken();
       if (!token) return { ok: false, error: { kind: "no-token" } };
 
-      let response: Response;
+      let response: HttpResponseLike;
       try {
-        response = await fetch(`${base}/rest/api/2/myself`, {
+        response = await request({
+          url: `${base}/rest/api/2/myself`,
           headers: {
             Authorization: `Bearer ${token}`,
             Accept: "application/json",
@@ -83,18 +84,18 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
           error: {
             kind: "auth",
             status: response.status as 401 | 403,
-            message: await safeFetchText(response),
+            message: await safeText(response),
           },
         };
       }
 
-      if (!response.ok) {
+      if (response.status < 200 || response.status >= 300) {
         return {
           ok: false,
           error: {
             kind: "http",
             status: response.status,
-            message: await safeFetchText(response),
+            message: await safeText(response),
           },
         };
       }
@@ -185,14 +186,6 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
       }
     },
   };
-}
-
-async function safeFetchText(r: Response): Promise<string> {
-  try {
-    return await r.text();
-  } catch {
-    return "";
-  }
 }
 
 async function safeText(r: HttpResponseLike): Promise<string> {
