@@ -31,26 +31,72 @@ function renderOk(el: HTMLElement, issue: IssueDetails, ctx: RenderCtx): void {
   const baseUrl = ctx.baseUrl.replace(/\/+$/, "");
 
   const header = append(el, "div", "jb-header");
-  const keyEl = append(header, "span", "jb-key");
+  Object.assign(header.style, {
+    display: "flex",
+    alignItems: "baseline",
+    gap: "8px",
+    marginBottom: "4px",
+  } as Partial<CSSStyleDeclaration>);
+
   const link = document.createElement("a");
   link.href = `${baseUrl}/browse/${issue.key}`;
   link.textContent = issue.key;
   link.target = "_blank";
   link.rel = "noopener noreferrer";
+  Object.assign(link.style, {
+    fontWeight: "600",
+    textDecoration: "none",
+  } as Partial<CSSStyleDeclaration>);
+  const keyEl = append(header, "span", "jb-key");
   keyEl.appendChild(link);
 
-  append(el, "div", "jb-summary", issue.summary);
+  const statusEl = append(header, "span", "jb-status", issue.status);
+  Object.assign(statusEl.style, {
+    fontSize: "var(--font-ui-smaller)",
+    padding: "1px 6px",
+    borderRadius: "10px",
+    background: "var(--background-modifier-hover)",
+    color: "var(--text-muted)",
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+  } as Partial<CSSStyleDeclaration>);
+
+  const updated = append(header, "span", "jb-updated", `Updated ${formatRelative(issue.updated)}`);
+  Object.assign(updated.style, {
+    marginLeft: "auto",
+    fontSize: "var(--font-ui-smaller)",
+    color: "var(--text-faint)",
+  } as Partial<CSSStyleDeclaration>);
+
+  const summary = append(el, "div", "jb-summary", issue.summary);
+  Object.assign(summary.style, {
+    fontSize: "var(--font-ui-medium)",
+    fontWeight: "500",
+    marginBottom: "6px",
+    lineHeight: "1.3",
+  } as Partial<CSSStyleDeclaration>);
 
   const meta = append(el, "div", "jb-meta");
-  append(meta, "span", "jb-status", issue.status);
-  append(meta, "span", "jb-issuetype", issue.type);
-  append(meta, "span", "jb-priority", issue.priority ?? "No priority");
+  Object.assign(meta.style, {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "10px",
+    fontSize: "var(--font-ui-smaller)",
+    color: "var(--text-muted)",
+    marginBottom: "4px",
+  } as Partial<CSSStyleDeclaration>);
+  metaItem(meta, "Type", issue.type);
+  metaItem(meta, "Priority", issue.priority ?? "—");
+  metaItem(meta, "Assignee", issue.assignee ?? "Unassigned");
+  metaItem(meta, "Reporter", issue.reporter ?? "—");
+}
 
-  const people = append(el, "div", "jb-people");
-  append(people, "span", "jb-assignee", issue.assignee ?? "Unassigned");
-  append(people, "span", "jb-reporter", `Reporter: ${issue.reporter ?? "—"}`);
-
-  append(el, "div", "jb-updated", `Updated ${formatRelative(issue.updated)}`);
+function metaItem(parent: HTMLElement, label: string, value: string): void {
+  const item = append(parent, "span", "jb-meta-item");
+  const lab = append(item, "span", "jb-meta-label", `${label}: `);
+  Object.assign(lab.style, { color: "var(--text-faint)" } as Partial<CSSStyleDeclaration>);
+  const val = append(item, "span", "jb-meta-value", value);
+  Object.assign(val.style, { color: "var(--text-normal)" } as Partial<CSSStyleDeclaration>);
 }
 
 function append(parent: HTMLElement, tag: string, cls: string, text?: string): HTMLElement {

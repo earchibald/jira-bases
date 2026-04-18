@@ -31,10 +31,11 @@ describe("renderIssue", () => {
     expect(link?.href).toBe("https://jira.me.com/browse/ABC-1");
     expect(el.querySelector(".jb-summary")?.textContent).toBe("A sample issue");
     expect(el.querySelector(".jb-status")?.textContent).toContain("In Progress");
-    expect(el.querySelector(".jb-issuetype")?.textContent).toContain("Task");
-    expect(el.querySelector(".jb-priority")?.textContent).toContain("High");
-    expect(el.querySelector(".jb-assignee")?.textContent).toContain("Alice");
-    expect(el.querySelector(".jb-reporter")?.textContent).toContain("Bob");
+    const meta = el.querySelector(".jb-meta")?.textContent ?? "";
+    expect(meta).toContain("Task");
+    expect(meta).toContain("High");
+    expect(meta).toContain("Alice");
+    expect(meta).toContain("Bob");
     expect(el.querySelector(".jb-updated")?.textContent).toMatch(/ago|Apr/);
   });
 
@@ -44,7 +45,7 @@ describe("renderIssue", () => {
       { state: "ok", issue: { ...ISSUE, assignee: null }, refreshing: false },
       CTX,
     );
-    expect(el.querySelector(".jb-assignee")?.textContent).toContain("Unassigned");
+    expect(el.querySelector(".jb-meta")?.textContent ?? "").toContain("Unassigned");
   });
 
   it("renders refreshing indicator on stale state", () => {
