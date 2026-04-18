@@ -17,6 +17,7 @@ import {
 import {
   collectAllKeys,
   findOrphanedStubs,
+  listStubPaths,
   rescanFile,
   IndexerDeps,
 } from "./indexer";
@@ -237,6 +238,7 @@ export default class JiraBasesPlugin extends Plugin {
       new Notice("No JIRA references found in vault.");
       return;
     }
+    const existingByKey = await listStubPaths(deps, this.settings.stubsFolder);
     let synced = 0;
     const failures: string[] = [];
     for (const key of keys) {
@@ -248,7 +250,12 @@ export default class JiraBasesPlugin extends Plugin {
         continue;
       }
       try {
-        await writeStub(vault, this.settings.stubsFolder, r.value);
+        await writeStub(
+          vault,
+          this.settings.stubsFolder,
+          r.value,
+          existingByKey.get(key) ?? null,
+        );
         synced++;
       } catch (e) {
         const msg = (e as Error).message;
@@ -276,15 +283,13 @@ export default class JiraBasesPlugin extends Plugin {
     new ConfirmModal(
       this.app,
       `Delete ${orphans.length} orphaned stub${orphans.length === 1 ? "" : "s"}?`,
-      orphans,
+      orphans.map((o) => `${o.key} — ${o.path}`),
       "Delete",
       async () => {
         let deleted = 0;
         let failed = 0;
-        const prefix = this.settings.stubsFolder.replace(/\/+$/, "") + "/";
-        for (const key of orphans) {
-          const path = `${prefix}${key}.md`;
-          const f = this.app.vault.getAbstractFileByPath(path);
+        for (const orphan of orphans) {
+          const f = this.app.vault.getAbstractFileByPath(orphan.path);
           if (!(f instanceof TFile)) {
             failed++;
             continue;

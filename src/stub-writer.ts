@@ -8,6 +8,16 @@ export interface VaultAdapter {
   ensureFolder(path: string): Promise<void>;
 }
 
+export function stubFileName(details: IssueDetails): string {
+  const raw = `${details.key} ${details.summary}`;
+  const sanitized = raw
+    .replace(/[\\/:*?"<>|#^[\]]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 180);
+  return `${sanitized}.md`;
+}
+
 const MANAGED_KEYS = [
   "jira_key",
   "jira_summary",
@@ -52,30 +62,33 @@ export async function writeStub(
   vault: VaultAdapter,
   stubsFolder: string,
   details: IssueDetails,
+  existingPath: string | null = null,
 ): Promise<void> {
   const folder = stubsFolder.replace(/^\/+|\/+$/g, "");
-  const path = `${folder}/${details.key}.md`;
   await vault.ensureFolder(folder);
 
-  const existing = await vault.read(path);
   const patch = managedPatch(details);
 
-  if (existing === null) {
-    const withFm = writeFrontmatter(initialBody(details), patch);
-    if (withFm === null) {
-      throw new Error("Failed to emit frontmatter for new stub");
+  if (existingPath !== null) {
+    const existing = await vault.read(existingPath);
+    if (existing !== null) {
+      const updated = writeFrontmatter(existing, patch);
+      if (updated === null) {
+        throw new Error(
+          `Could not round-trip frontmatter in ${existingPath}; stub skipped`,
+        );
+      }
+      await vault.write(existingPath, updated);
+      return;
     }
-    await vault.write(path, withFm);
-    return;
   }
 
-  const updated = writeFrontmatter(existing, patch);
-  if (updated === null) {
-    throw new Error(
-      `Could not round-trip frontmatter in ${path}; stub skipped`,
-    );
+  const path = `${folder}/${stubFileName(details)}`;
+  const withFm = writeFrontmatter(initialBody(details), patch);
+  if (withFm === null) {
+    throw new Error("Failed to emit frontmatter for new stub");
   }
-  await vault.write(path, updated);
+  await vault.write(path, withFm);
 }
 
 export { MANAGED_KEYS };

@@ -44,7 +44,7 @@ describe("writeStub", () => {
     const vault = inMemoryVault();
     await writeStub(vault, "JIRA", details);
     expect(vault.folders.has("JIRA")).toBe(true);
-    const written = vault.files.get("JIRA/ABC-1.md")!;
+    const written = vault.files.get("JIRA/ABC-1 Fix login.md")!;
     expect(written).toContain("jira_key: ABC-1");
     expect(written).toContain('jira_summary: "Fix login"');
     expect(written).toContain('jira_status: "In Progress"');
@@ -84,7 +84,7 @@ my personal note about this issue
 with multiple lines
 `,
     });
-    await writeStub(vault, "JIRA", details);
+    await writeStub(vault, "JIRA", details, "JIRA/ABC-1.md");
     const updated = vault.files.get("JIRA/ABC-1.md")!;
     expect(updated).toContain("my personal note about this issue");
     expect(updated).toContain("with multiple lines");
@@ -110,16 +110,24 @@ custom_tag: mine
 body
 `,
     });
-    await writeStub(vault, "JIRA", details);
+    await writeStub(vault, "JIRA", details, "JIRA/ABC-1.md");
     const updated = vault.files.get("JIRA/ABC-1.md")!;
     expect(updated).toContain("custom_tag: mine");
+  });
+
+  it("creates a new stub with key+summary filename, sanitized", async () => {
+    const vault = inMemoryVault();
+    const spicy = { ...details, summary: "Fix: login / auth | 403?" };
+    await writeStub(vault, "JIRA", spicy);
+    const path = [...vault.files.keys()][0];
+    expect(path).toBe("JIRA/ABC-1 Fix- login - auth - 403-.md");
   });
 
   it("updates jira_synced_at to a recent ISO timestamp", async () => {
     const vault = inMemoryVault();
     const before = Date.now();
     await writeStub(vault, "JIRA", details);
-    const written = vault.files.get("JIRA/ABC-1.md")!;
+    const written = vault.files.get("JIRA/ABC-1 Fix login.md")!;
     const match = written.match(/jira_synced_at: "([^"]+)"/);
     expect(match).not.toBeNull();
     const t = new Date(match![1]).getTime();

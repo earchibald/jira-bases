@@ -109,14 +109,18 @@ describe("collectAllKeys", () => {
 });
 
 describe("findOrphanedStubs", () => {
-  it("returns stub KEYs not referenced by any note", async () => {
+  it("returns orphan {key, path} derived from frontmatter jira_key", async () => {
     const d = deps({
       "a.md": `---\njira_issues:\n  - ABC-1\n---\n`,
-      "JIRA/ABC-1.md": `---\njira_key: ABC-1\n---\n`,
-      "JIRA/ABC-2.md": `---\njira_key: ABC-2\n---\n`,
+      "JIRA/ABC-1 Fix login.md": `---\njira_key: ABC-1\n---\n`,
+      "JIRA/ABC-2 Old thing.md": `---\njira_key: ABC-2\n---\n`,
       "JIRA/DEF-9.md": `---\njira_key: DEF-9\n---\n`,
     });
     const orphans = await findOrphanedStubs(d, "JIRA");
-    expect(orphans.sort()).toEqual(["ABC-2", "DEF-9"]);
+    const sorted = orphans.map((o) => o.key).sort();
+    expect(sorted).toEqual(["ABC-2", "DEF-9"]);
+    const map = new Map(orphans.map((o) => [o.key, o.path]));
+    expect(map.get("ABC-2")).toBe("JIRA/ABC-2 Old thing.md");
+    expect(map.get("DEF-9")).toBe("JIRA/DEF-9.md");
   });
 });

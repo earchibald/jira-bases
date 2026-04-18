@@ -42,18 +42,38 @@ export async function collectAllKeys(
   return keys;
 }
 
+export async function listStubPaths(
+  deps: IndexerDeps,
+  stubsFolder: string,
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const prefix = stubsFolder.replace(/\/+$/, "") + "/";
+  const notes = await deps.listNotes();
+  for (const path of notes) {
+    if (!path.startsWith(prefix)) continue;
+    const content = await deps.read(path);
+    if (content === null) continue;
+    const { frontmatter } = readFrontmatter(content);
+    const key = frontmatter.jira_key;
+    if (typeof key === "string") map.set(key, path);
+  }
+  return map;
+}
+
+export interface OrphanStub {
+  key: string;
+  path: string;
+}
+
 export async function findOrphanedStubs(
   deps: IndexerDeps,
   stubsFolder: string,
-): Promise<string[]> {
+): Promise<OrphanStub[]> {
   const referenced = await collectAllKeys(deps, stubsFolder);
-  const prefix = stubsFolder.replace(/\/+$/, "") + "/";
-  const notes = await deps.listNotes();
-  const orphans: string[] = [];
-  for (const path of notes) {
-    if (!path.startsWith(prefix)) continue;
-    const name = path.slice(prefix.length).replace(/\.md$/, "");
-    if (!referenced.has(name)) orphans.push(name);
+  const stubs = await listStubPaths(deps, stubsFolder);
+  const orphans: OrphanStub[] = [];
+  for (const [key, path] of stubs) {
+    if (!referenced.has(key)) orphans.push({ key, path });
   }
   return orphans;
 }
