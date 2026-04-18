@@ -102,10 +102,18 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
 
       try {
         const body = (await response.json()) as Record<string, unknown>;
-        if (typeof body.displayName !== "string" || typeof body.accountId !== "string") {
+        const accountId =
+          typeof body.accountId === "string"
+            ? body.accountId
+            : typeof body.key === "string"
+              ? body.key
+              : typeof body.name === "string"
+                ? body.name
+                : undefined;
+        if (typeof body.displayName !== "string" || !accountId) {
           return {
             ok: false,
-            error: { kind: "parse", message: "missing displayName or accountId" },
+            error: { kind: "parse", message: "missing displayName or account identifier" },
           };
         }
         const emailAddress =
@@ -114,7 +122,7 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
           ok: true,
           value: {
             displayName: body.displayName,
-            accountId: body.accountId,
+            accountId,
             emailAddress,
           },
         };
