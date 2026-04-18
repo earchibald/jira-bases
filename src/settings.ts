@@ -4,11 +4,15 @@ import type JiraBasesPlugin from "./main";
 export interface PluginSettings {
   baseUrl: string;
   encryptedTokens: Record<string, string>;
+  linkTemplate: string;
 }
+
+export const DEFAULT_LINK_TEMPLATE = "[{key} {summary}]({url})";
 
 export const DEFAULT_SETTINGS: PluginSettings = {
   baseUrl: "",
   encryptedTokens: {},
+  linkTemplate: DEFAULT_LINK_TEMPLATE,
 };
 
 export class JiraBasesSettingTab extends PluginSettingTab {
@@ -92,6 +96,28 @@ export class JiraBasesSettingTab extends PluginSettingTab {
           .setButtonText("Test")
           .setCta()
           .onClick(() => this.plugin.testConnection()),
+      );
+
+    new Setting(containerEl)
+      .setName("Link template")
+      .setDesc(
+        "Tokens: {key}, {summary}, {status}, {type}, {url}. Unknown tokens are left as-is.",
+      )
+      .addText((text) =>
+        text
+          .setPlaceholder(DEFAULT_LINK_TEMPLATE)
+          .setValue(this.plugin.settings.linkTemplate)
+          .onChange(async (value) => {
+            this.plugin.settings.linkTemplate = value;
+            await this.plugin.saveSettings();
+          }),
+      )
+      .addButton((btn) =>
+        btn.setButtonText("Reset to default").onClick(async () => {
+          this.plugin.settings.linkTemplate = DEFAULT_LINK_TEMPLATE;
+          await this.plugin.saveSettings();
+          this.display();
+        }),
       );
   }
 }
