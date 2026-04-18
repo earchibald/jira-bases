@@ -4,6 +4,13 @@ export type CurrentUser = {
   emailAddress?: string;
 };
 
+export interface Issue {
+  key: string;
+  summary: string;
+  status: string;
+  type: string;
+}
+
 export interface HttpResponseLike {
   status: number;
   text(): Promise<string>;
@@ -20,7 +27,8 @@ export type JiraError =
   | { kind: "auth"; status: 401 | 403; message: string }
   | { kind: "http"; status: number; message: string }
   | { kind: "network"; message: string }
-  | { kind: "parse"; message: string };
+  | { kind: "parse"; message: string }
+  | { kind: "not-found"; key: string };
 
 export type Result<T, E> =
   | { ok: true; value: T }
@@ -28,6 +36,7 @@ export type Result<T, E> =
 
 export interface JiraClient {
   getCurrentUser(): Promise<Result<CurrentUser, JiraError>>;
+  getIssue(key: string): Promise<Result<Issue, JiraError>>;
 }
 
 export interface JiraClientOptions {
@@ -124,6 +133,82 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
         };
       } catch (e) {
         return { ok: false, error: { kind: "parse", message: (e as Error).message } };
+      }
+    },
+    async getIssue(key) {
+      const token = await opts.getToken();
+      if (!token) return { ok: false, error: { kind: "no-token" } };
+
+      let response: HttpResponseLike;
+      try {
+        response = await request({
+          url: `${base}/rest/api/2/issue/${encodeURIComponent(
+            key,
+          )}?fields=summary,status,issuetype`,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+        });
+      } catch (e) {
+        return {
+          ok: false,
+          error: { kind: "network", message: (e as Error).message },
+        };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, error: { kind: "not-found", key } };
+      }
+      if (response.status === 401 || response.status === 403) {
+        return {
+          ok: false,
+          error: {
+            kind: "auth",
+            status: response.status,
+            message: await safeText(response),
+          },
+        };
+      }
+      if (response.status < 200 || response.status >= 300) {
+        return {
+          ok: false,
+          error: {
+            kind: "http",
+            status: response.status,
+            message: await safeText(response),
+          },
+        };
+      }
+
+      try {
+        const body = (await response.json()) as {
+          key?: string;
+          fields?: {
+            summary?: string;
+            status?: { name?: string };
+            issuetype?: { name?: string };
+          };
+        };
+        const issueKey = body.key ?? key;
+        const summary = body.fields?.summary;
+        const status = body.fields?.status?.name ?? "";
+        const type = body.fields?.issuetype?.name ?? "";
+        if (typeof summary !== "string") {
+          return {
+            ok: false,
+            error: { kind: "parse", message: "missing summary" },
+          };
+        }
+        return {
+          ok: true,
+          value: { key: issueKey, summary, status, type },
+        };
+      } catch (e) {
+        return {
+          ok: false,
+          error: { kind: "parse", message: (e as Error).message },
+        };
       }
     },
   };

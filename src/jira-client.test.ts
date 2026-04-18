@@ -136,3 +136,71 @@ describe("JiraClient.getCurrentUser", () => {
     expect(result.ok).toBe(true);
   });
 });
+
+describe("JiraClient.getIssue", () => {
+  it("returns ok with issue fields on 200", async () => {
+    server.use(
+      http.get(`${BASE}/rest/api/2/issue/ABC-123`, ({ request }) => {
+        const url = new URL(request.url);
+        expect(url.searchParams.get("fields")).toBe(
+          "summary,status,issuetype",
+        );
+        return HttpResponse.json({
+          key: "ABC-123",
+          fields: {
+            summary: "Fix login",
+            status: { name: "In Progress" },
+            issuetype: { name: "Bug" },
+          },
+        });
+      }),
+    );
+    const result = await client("tok").getIssue("ABC-123");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toEqual({
+        key: "ABC-123",
+        summary: "Fix login",
+        status: "In Progress",
+        type: "Bug",
+      });
+    }
+  });
+
+  it("returns not-found error on 404", async () => {
+    server.use(
+      http.get(`${BASE}/rest/api/2/issue/NOPE-1`, () =>
+        HttpResponse.text("missing", { status: 404 }),
+      ),
+    );
+    const result = await client("tok").getIssue("NOPE-1");
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.error.kind === "not-found") {
+      expect(result.error.key).toBe("NOPE-1");
+    } else {
+      throw new Error("expected not-found");
+    }
+  });
+
+  it("returns auth error on 401", async () => {
+    server.use(
+      http.get(`${BASE}/rest/api/2/issue/ABC-1`, () =>
+        HttpResponse.text("nope", { status: 401 }),
+      ),
+    );
+    const result = await client("tok").getIssue("ABC-1");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("auth");
+  });
+
+  it("returns parse error when summary is missing", async () => {
+    server.use(
+      http.get(`${BASE}/rest/api/2/issue/ABC-2`, () =>
+        HttpResponse.json({ key: "ABC-2", fields: {} }),
+      ),
+    );
+    const result = await client("tok").getIssue("ABC-2");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("parse");
+  });
+});
