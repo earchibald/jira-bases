@@ -136,3 +136,120 @@ describe("JiraClient.getCurrentUser", () => {
     expect(result.ok).toBe(true);
   });
 });
+
+describe("JiraClient.getIssue", () => {
+  it("returns ok with mapped issue on 200", async () => {
+    server.use(
+      http.get(`${BASE}/rest/api/2/issue/ABC-123`, ({ request }) => {
+        const url = new URL(request.url);
+        expect(url.searchParams.get("fields")).toBe(
+          "summary,status,issuetype,priority,assignee,reporter,updated",
+        );
+        expect(request.headers.get("Authorization")).toBe("Bearer tok-abc");
+        return HttpResponse.json({
+          key: "ABC-123",
+          fields: {
+            summary: "A sample issue",
+            status: { name: "In Progress", statusCategory: { colorName: "yellow" } },
+            issuetype: { name: "Task", iconUrl: "https://jira.me.com/it.png" },
+            priority: { name: "High", iconUrl: "https://jira.me.com/p.png" },
+            assignee: { displayName: "Alice" },
+            reporter: { displayName: "Bob" },
+            updated: "2026-04-15T10:00:00.000+0000",
+          },
+        });
+      }),
+    );
+    const result = await client("tok-abc").getIssue("ABC-123");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toEqual({
+        key: "ABC-123",
+        summary: "A sample issue",
+        status: { name: "In Progress", categoryColor: "yellow" },
+        issueType: { name: "Task", iconUrl: "https://jira.me.com/it.png" },
+        priority: { name: "High", iconUrl: "https://jira.me.com/p.png" },
+        assignee: { displayName: "Alice" },
+        reporter: { displayName: "Bob" },
+        updated: "2026-04-15T10:00:00.000+0000",
+      });
+    }
+  });
+
+  it("maps null assignee and missing priority", async () => {
+    server.use(
+      http.get(`${BASE}/rest/api/2/issue/ABC-1`, () =>
+        HttpResponse.json({
+          key: "ABC-1",
+          fields: {
+            summary: "S",
+            status: { name: "Open", statusCategory: { colorName: "blue-gray" } },
+            issuetype: { name: "Bug", iconUrl: "u" },
+            priority: null,
+            assignee: null,
+            reporter: { displayName: "Bob" },
+            updated: "2026-04-15T10:00:00.000+0000",
+          },
+        }),
+      ),
+    );
+    const result = await client("tok-abc").getIssue("ABC-1");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.assignee).toBeNull();
+      expect(result.value.priority).toBeNull();
+    }
+  });
+
+  it("returns not-found on 404", async () => {
+    server.use(
+      http.get(`${BASE}/rest/api/2/issue/XYZ-9`, () =>
+        new HttpResponse(null, { status: 404 }),
+      ),
+    );
+    const result = await client("tok-abc").getIssue("XYZ-9");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toEqual({ kind: "not-found", key: "XYZ-9" });
+  });
+
+  it("returns auth on 401", async () => {
+    server.use(
+      http.get(`${BASE}/rest/api/2/issue/ABC-1`, () =>
+        new HttpResponse("nope", { status: 401 }),
+      ),
+    );
+    const result = await client("tok-abc").getIssue("ABC-1");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("auth");
+  });
+
+  it("returns network on fetch throw", async () => {
+    const c = createJiraClient({
+      baseUrl: BASE,
+      getToken: async () => "tok",
+      request: async () => {
+        throw new Error("offline");
+      },
+    });
+    const result = await c.getIssue("ABC-1");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toEqual({ kind: "network", message: "offline" });
+  });
+
+  it("returns parse on malformed body", async () => {
+    server.use(
+      http.get(`${BASE}/rest/api/2/issue/ABC-1`, () =>
+        HttpResponse.json({ key: "ABC-1" /* no fields */ }),
+      ),
+    );
+    const result = await client("tok-abc").getIssue("ABC-1");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("parse");
+  });
+
+  it("returns no-token when token missing", async () => {
+    const result = await client(null).getIssue("ABC-1");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toEqual({ kind: "no-token" });
+  });
+});
