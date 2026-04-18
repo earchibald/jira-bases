@@ -291,7 +291,8 @@ export default class JiraBasesPlugin extends Plugin {
     const baseStripped = baseUrl.replace(/\/+$/, "");
     const client = this.makeClient();
 
-    // Case A: we know the key — fetch and replace selection with [selection](url).
+    // Case A: we know the key — fetch the issue and replace selection with the
+    // configured linkTemplate.
     if (detectedKey && selection) {
       const url = `${baseStripped}/browse/${detectedKey}`;
       const r = await client.getIssue(detectedKey);
@@ -299,7 +300,15 @@ export default class JiraBasesPlugin extends Plugin {
         new Notice(errorMessage(r.error));
         return;
       }
-      editor.replaceSelection(`[${selection}](${url})`);
+      editor.replaceSelection(
+        renderTemplate(this.settings.linkTemplate, {
+          key: r.value.key,
+          summary: r.value.summary,
+          status: r.value.status,
+          type: r.value.type,
+          url,
+        }),
+      );
       return;
     }
 
