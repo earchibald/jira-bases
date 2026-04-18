@@ -4,6 +4,17 @@ export type CurrentUser = {
   emailAddress?: string;
 };
 
+export interface HttpResponseLike {
+  status: number;
+  text(): Promise<string>;
+  json(): Promise<unknown>;
+}
+
+export type HttpRequest = (req: {
+  url: string;
+  headers: Record<string, string>;
+}) => Promise<HttpResponseLike>;
+
 export type JiraError =
   | { kind: "no-token" }
   | { kind: "auth"; status: 401 | 403; message: string }
@@ -22,7 +33,17 @@ export interface JiraClient {
 export interface JiraClientOptions {
   baseUrl: string;
   getToken: () => Promise<string | null>;
+  request?: HttpRequest;
 }
+
+const defaultRequest: HttpRequest = async ({ url, headers }) => {
+  const r = await fetch(url, { headers });
+  return {
+    status: r.status,
+    text: () => r.text(),
+    json: () => r.json(),
+  };
+};
 
 function normalizeBase(url: string): string {
   return url.replace(/\/+$/, "");
@@ -30,15 +51,17 @@ function normalizeBase(url: string): string {
 
 export function createJiraClient(opts: JiraClientOptions): JiraClient {
   const base = normalizeBase(opts.baseUrl);
+  const request = opts.request ?? defaultRequest;
 
   return {
     async getCurrentUser() {
       const token = await opts.getToken();
       if (!token) return { ok: false, error: { kind: "no-token" } };
 
-      let response: Response;
+      let response: HttpResponseLike;
       try {
-        response = await fetch(`${base}/rest/api/2/myself`, {
+        response = await request({
+          url: `${base}/rest/api/2/myself`,
           headers: {
             Authorization: `Bearer ${token}`,
             Accept: "application/json",
@@ -62,7 +85,7 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
         };
       }
 
-      if (!response.ok) {
+      if (response.status < 200 || response.status >= 300) {
         return {
           ok: false,
           error: {
@@ -75,10 +98,18 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
 
       try {
         const body = (await response.json()) as Record<string, unknown>;
-        if (typeof body.displayName !== "string" || typeof body.accountId !== "string") {
+        const accountId =
+          typeof body.accountId === "string"
+            ? body.accountId
+            : typeof body.key === "string"
+              ? body.key
+              : typeof body.name === "string"
+                ? body.name
+                : undefined;
+        if (typeof body.displayName !== "string" || !accountId) {
           return {
             ok: false,
-            error: { kind: "parse", message: "missing displayName or accountId" },
+            error: { kind: "parse", message: "missing displayName or account identifier" },
           };
         }
         const emailAddress =
@@ -87,7 +118,7 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
           ok: true,
           value: {
             displayName: body.displayName,
-            accountId: body.accountId,
+            accountId,
             emailAddress,
           },
         };
@@ -98,7 +129,7 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
   };
 }
 
-async function safeText(r: Response): Promise<string> {
+async function safeText(r: HttpResponseLike): Promise<string> {
   try {
     return await r.text();
   } catch {
