@@ -63,6 +63,8 @@ function errorMessage(err: JiraError): string {
       return "Set your JIRA Personal Access Token in plugin settings.";
     case "auth":
       return `Authentication failed (HTTP ${err.status}). Check your PAT.`;
+    case "not-found":
+      return `Issue ${err.key} not found.`;
     case "network":
       return `Could not reach JIRA: ${err.message}.`;
     case "http":
