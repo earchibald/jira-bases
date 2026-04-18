@@ -35,3 +35,39 @@ Run the "JIRA: Test connection" command (or the Test button in settings). You sh
 ## Scope (v0.1)
 
 Desktop only. PAT only (no OAuth). JIRA Data Center.
+
+## v0.3 — Bases index & issue stubs
+
+Lets Obsidian Bases correlate notes and JIRA issues.
+
+### How it works
+
+- On save, the plugin scans the active note for JIRA references — both `[…](<baseUrl>/browse/KEY)` links and (optionally) bare keys like `ABC-1` for project prefixes you've configured — and writes `jira_issues: [KEY, …]` to the note's frontmatter.
+- The command "JIRA: Sync issue stubs" walks every referenced key, fetches current fields from JIRA, and maintains one note per issue under your configured stubs folder (default `JIRA/`). Each stub has a managed frontmatter block plus a `## Notes` section you can edit freely — the plugin never touches content below `## Notes`.
+- "JIRA: Clean orphaned stubs" deletes stubs for issues no longer referenced anywhere.
+
+### Settings
+
+- **Stubs folder** (default `JIRA`) — where issue stubs live.
+- **Project prefixes** (default empty) — comma-separated project prefixes (e.g. `ABC, PROJ`). Required for bare-key matching; link-based matching always works.
+
+### Example `.base`
+
+```yaml
+filters:
+  and:
+    - file.inFolder("JIRA")
+views:
+  - type: table
+    name: "All issues"
+    order:
+      - file.name
+      - jira_status
+      - jira_priority
+      - jira_assignee
+      - jira_updated
+```
+
+### Non-goals (still)
+
+No writing back to JIRA, no scheduled refresh, no starter `.base` files, no mobile.
