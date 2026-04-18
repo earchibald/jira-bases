@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { renderTemplate, IssueFields } from "./template";
+import { renderTemplate, IssueFields, escapeLinkText, escapeLinkUrl } from "./template";
 
 const fields: IssueFields = {
   key: "ABC-123",
@@ -37,5 +37,32 @@ describe("renderTemplate", () => {
 
   it("handles an empty template", () => {
     expect(renderTemplate("", fields)).toBe("");
+  });
+});
+
+describe("escapeLinkText", () => {
+  it("escapes brackets, backslashes, and angle brackets", () => {
+    expect(escapeLinkText("Grant role deploy-runner-role-<env> to list [SNS]"))
+      .toBe("Grant role deploy-runner-role-\\<env\\> to list \\[SNS\\]");
+  });
+  it("escapes backslash before other escapes so they're not double-escaped on a second pass", () => {
+    const once = escapeLinkText("a\\b");
+    expect(once).toBe("a\\\\b");
+  });
+  it("leaves unaffected text alone", () => {
+    expect(escapeLinkText("hello world!")).toBe("hello world!");
+  });
+});
+
+describe("escapeLinkUrl", () => {
+  it("encodes spaces and parens", () => {
+    expect(escapeLinkUrl("https://x.com/foo bar (baz)")).toBe(
+      "https://x.com/foo%20bar%20%28baz%29",
+    );
+  });
+  it("leaves clean URLs alone", () => {
+    expect(escapeLinkUrl("https://jira.me.com/browse/ABC-1")).toBe(
+      "https://jira.me.com/browse/ABC-1",
+    );
   });
 });

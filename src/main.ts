@@ -9,7 +9,7 @@ import {
 import { createSecretStore, SecretStore } from "./secret-store";
 import type { HttpRequest, Issue } from "./jira-client";
 import { createJiraClient, JiraError, JiraClient } from "./jira-client";
-import { renderTemplate } from "./template";
+import { renderTemplate, escapeLinkText, escapeLinkUrl } from "./template";
 import { IssueSuggestModal } from "./issue-suggest-modal";
 import {
   DEFAULT_SETTINGS,
@@ -296,7 +296,7 @@ export default class JiraBasesPlugin extends Plugin {
     // Otherwise, the selection has surrounding text — preserve it as the
     // anchor and only build the URL from the detected key.
     if (detectedKey && selection) {
-      const url = `${baseStripped}/browse/${detectedKey}`;
+      const url = escapeLinkUrl(`${baseStripped}/browse/${detectedKey}`);
       if (selection.trim() === detectedKey) {
         const r = await client.getIssue(detectedKey);
         if (!r.ok) {
@@ -305,15 +305,15 @@ export default class JiraBasesPlugin extends Plugin {
         }
         editor.replaceSelection(
           renderTemplate(this.settings.linkTemplate, {
-            key: r.value.key,
-            summary: r.value.summary,
-            status: r.value.status,
-            type: r.value.type,
+            key: escapeLinkText(r.value.key),
+            summary: escapeLinkText(r.value.summary),
+            status: escapeLinkText(r.value.status),
+            type: escapeLinkText(r.value.type),
             url,
           }),
         );
       } else {
-        editor.replaceSelection(`[${selection}](${url})`);
+        editor.replaceSelection(`[${escapeLinkText(selection)}](${url})`);
       }
       return;
     }
@@ -324,16 +324,16 @@ export default class JiraBasesPlugin extends Plugin {
       app: this.app,
       client,
       onChoose: (issue: Issue) => {
-        const url = `${baseStripped}/browse/${issue.key}`;
+        const url = escapeLinkUrl(`${baseStripped}/browse/${issue.key}`);
         if (wrapText) {
-          editor.replaceSelection(`[${wrapText}](${url})`);
+          editor.replaceSelection(`[${escapeLinkText(wrapText)}](${url})`);
         } else {
           editor.replaceSelection(
             renderTemplate(this.settings.linkTemplate, {
-              key: issue.key,
-              summary: issue.summary,
-              status: issue.status,
-              type: issue.type,
+              key: escapeLinkText(issue.key),
+              summary: escapeLinkText(issue.summary),
+              status: escapeLinkText(issue.status),
+              type: escapeLinkText(issue.type),
               url,
             }),
           );
