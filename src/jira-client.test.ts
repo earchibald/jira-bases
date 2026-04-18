@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
 import { setupServer } from "msw/node";
 import { http, HttpResponse } from "msw";
 import { createJiraClient } from "./jira-client";
+import type { HttpRequest } from "./jira-client";
 
 const BASE = "https://jira.me.com";
 
@@ -281,5 +282,111 @@ describe("JiraClient.searchIssues", () => {
       20,
     );
     expect(result.ok).toBe(true);
+  });
+});
+
+describe("JiraClient.getIssueDetails", () => {
+
+  function mkRequest(
+    handler: (url: string, headers: Record<string, string>) => {
+      status: number;
+      body: unknown;
+    },
+  ): HttpRequest {
+    return async ({ url, headers }) => {
+      const res = handler(url, headers);
+      return {
+        status: res.status,
+        text: async () =>
+          typeof res.body === "string" ? res.body : JSON.stringify(res.body),
+        json: async () => res.body,
+      };
+    };
+  }
+
+  const fullPayload = {
+    key: "ABC-1",
+    fields: {
+      summary: "Fix login",
+      status: { name: "In Progress" },
+      issuetype: { name: "Bug" },
+      priority: { name: "High" },
+      assignee: { displayName: "Eugene" },
+      reporter: { displayName: "Colleague" },
+      labels: ["frontend"],
+      updated: "2026-04-15T09:22:00.000+0000",
+    },
+  };
+
+  it("returns ok with parsed details on 200", async () => {
+    let sawUrl = "";
+    const client = createJiraClient({
+      baseUrl: BASE,
+      getToken: async () => "tok",
+      request: mkRequest((url) => {
+        sawUrl = url;
+        return { status: 200, body: fullPayload };
+      }),
+    });
+    const r = await client.getIssueDetails("ABC-1");
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.key).toBe("ABC-1");
+      expect(r.value.url).toBe("https://jira.me.com/browse/ABC-1");
+    }
+    expect(sawUrl).toContain(
+      "/rest/api/2/issue/ABC-1?fields=summary,status,issuetype,priority,assignee,reporter,labels,updated",
+    );
+  });
+
+  it("returns not-found on 404", async () => {
+    const client = createJiraClient({
+      baseUrl: BASE,
+      getToken: async () => "tok",
+      request: mkRequest(() => ({ status: 404, body: "no" })),
+    });
+    const r = await client.getIssueDetails("ABC-1");
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error.kind).toBe("not-found");
+      if (r.error.kind === "not-found") expect(r.error.key).toBe("ABC-1");
+    }
+  });
+
+  it("returns auth on 401", async () => {
+    const client = createJiraClient({
+      baseUrl: BASE,
+      getToken: async () => "tok",
+      request: mkRequest(() => ({ status: 401, body: "no" })),
+    });
+    const r = await client.getIssueDetails("ABC-1");
+    expect(r.ok).toBe(false);
+    if (!r.ok && r.error.kind === "auth") {
+      expect(r.error.status).toBe(401);
+    } else {
+      throw new Error("expected auth/401");
+    }
+  });
+
+  it("returns parse when fields are missing", async () => {
+    const client = createJiraClient({
+      baseUrl: BASE,
+      getToken: async () => "tok",
+      request: mkRequest(() => ({ status: 200, body: { key: "ABC-1" } })),
+    });
+    const r = await client.getIssueDetails("ABC-1");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.kind).toBe("parse");
+  });
+
+  it("returns no-token when token is null", async () => {
+    const client = createJiraClient({
+      baseUrl: BASE,
+      getToken: async () => null,
+      request: mkRequest(() => ({ status: 200, body: fullPayload })),
+    });
+    const r = await client.getIssueDetails("ABC-1");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.kind).toBe("no-token");
   });
 });

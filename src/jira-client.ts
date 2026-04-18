@@ -1,4 +1,5 @@
 import { escapeJqlText } from "./issue-suggest-helpers";
+import { parseIssueDetails, IssueDetails } from "./jira-fields";
 
 export type CurrentUser = {
   displayName: string;
@@ -40,6 +41,7 @@ export interface JiraClient {
   getCurrentUser(): Promise<Result<CurrentUser, JiraError>>;
   getIssue(key: string): Promise<Result<Issue, JiraError>>;
   searchIssues(query: string, limit: number): Promise<Result<Issue[], JiraError>>;
+  getIssueDetails(key: string): Promise<Result<IssueDetails, JiraError>>;
 }
 
 export interface JiraClientOptions {
@@ -49,11 +51,11 @@ export interface JiraClientOptions {
 }
 
 const defaultRequest: HttpRequest = async ({ url, headers }) => {
-  const r = await fetch(url, { headers });
+  const response = await fetch(url, { headers });
   return {
-    status: r.status,
-    text: () => r.text(),
-    json: () => r.json(),
+    status: response.status,
+    text: () => response.text(),
+    json: () => response.json() as Promise<unknown>,
   };
 };
 
@@ -91,7 +93,7 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
           ok: false,
           error: {
             kind: "auth",
-            status: response.status,
+            status: response.status as 401 | 403,
             message: await safeText(response),
           },
         };
@@ -138,6 +140,7 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
         return { ok: false, error: { kind: "parse", message: (e as Error).message } };
       }
     },
+
     async getIssue(key) {
       const token = await opts.getToken();
       if (!token) return { ok: false, error: { kind: "no-token" } };
@@ -168,7 +171,7 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
           ok: false,
           error: {
             kind: "auth",
-            status: response.status,
+            status: response.status as 401 | 403,
             message: await safeText(response),
           },
         };
@@ -214,6 +217,7 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
         };
       }
     },
+
     async searchIssues(query, limit) {
       const token = await opts.getToken();
       if (!token) return { ok: false, error: { kind: "no-token" } };
@@ -246,7 +250,7 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
           ok: false,
           error: {
             kind: "auth",
-            status: response.status,
+            status: response.status as 401 | 403,
             message: await safeText(response),
           },
         };
@@ -290,6 +294,69 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
           ok: false,
           error: { kind: "parse", message: (e as Error).message },
         };
+      }
+    },
+
+    async getIssueDetails(key) {
+      const token = await opts.getToken();
+      if (!token) return { ok: false, error: { kind: "no-token" } };
+
+      const fields =
+        "summary,status,issuetype,priority,assignee,reporter,labels,updated";
+      const url = `${base}/rest/api/2/issue/${encodeURIComponent(key)}?fields=${fields}`;
+
+      let response: HttpResponseLike;
+      try {
+        response = await request({
+          url,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+        });
+      } catch (e) {
+        return {
+          ok: false,
+          error: { kind: "network", message: (e as Error).message },
+        };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, error: { kind: "not-found", key } };
+      }
+      if (response.status === 401 || response.status === 403) {
+        return {
+          ok: false,
+          error: {
+            kind: "auth",
+            status: response.status as 401 | 403,
+            message: await safeText(response),
+          },
+        };
+      }
+      if (response.status < 200 || response.status >= 300) {
+        return {
+          ok: false,
+          error: {
+            kind: "http",
+            status: response.status,
+            message: await safeText(response),
+          },
+        };
+      }
+
+      try {
+        const body = (await response.json()) as unknown;
+        const details = parseIssueDetails(body, base);
+        if (!details) {
+          return {
+            ok: false,
+            error: { kind: "parse", message: "malformed issue payload" },
+          };
+        }
+        return { ok: true, value: details };
+      } catch (e) {
+        return { ok: false, error: { kind: "parse", message: (e as Error).message } };
       }
     },
   };
