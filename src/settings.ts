@@ -179,35 +179,53 @@ export class JiraBasesSettingTab extends PluginSettingTab {
           }),
       );
 
+    let templateTextSetValue: ((v: string) => void) | null = null;
+    let modeDropdownSetValue: ((v: string) => void) | null = null;
+
     new Setting(containerEl)
       .setName("Auto-lookup link style")
       .setDesc(
         "Minimal = [KEY](url). Primary = your Link template above. Custom = the template below.",
       )
-      .addDropdown((d) =>
-        d
-          .addOption("minimal", "Minimal")
+      .addDropdown((d) => {
+        modeDropdownSetValue = (v) => d.setValue(v);
+        d.addOption("minimal", "Minimal")
           .addOption("primary", "Use primary template")
           .addOption("custom", "Custom template")
           .setValue(this.plugin.settings.autoLookupMode)
           .onChange(async (v) => {
-            this.plugin.settings.autoLookupMode = v as "minimal" | "primary" | "custom";
+            const mode = v as AutoLookupMode;
+            this.plugin.settings.autoLookupMode = mode;
+            if (mode === "minimal") {
+              this.plugin.settings.autoLookupTemplate = MINIMAL_LINK_TEMPLATE;
+              templateTextSetValue?.(MINIMAL_LINK_TEMPLATE);
+            } else if (mode === "primary") {
+              this.plugin.settings.autoLookupTemplate =
+                this.plugin.settings.linkTemplate;
+              templateTextSetValue?.(this.plugin.settings.linkTemplate);
+            }
             await this.plugin.saveSettings();
-          }),
-      );
+          });
+      });
 
     new Setting(containerEl)
       .setName("Custom auto-lookup template")
-      .setDesc("Used only when the style above is set to Custom. Same tokens as Link template.")
-      .addText((t) =>
-        t
-          .setPlaceholder("[{key}]({url})")
+      .setDesc(
+        "Reflects the current style. Editing this flips the style to Custom. Tokens match Link template.",
+      )
+      .addText((t) => {
+        templateTextSetValue = (v) => t.setValue(v);
+        t.setPlaceholder("[{key}]({url})")
           .setValue(this.plugin.settings.autoLookupTemplate)
           .onChange(async (v) => {
             this.plugin.settings.autoLookupTemplate = v;
+            if (this.plugin.settings.autoLookupMode !== "custom") {
+              this.plugin.settings.autoLookupMode = "custom";
+              modeDropdownSetValue?.("custom");
+            }
             await this.plugin.saveSettings();
-          }),
-      );
+          });
+      });
 
     new Setting(containerEl)
       .setName("Project prefixes")

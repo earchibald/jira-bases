@@ -205,12 +205,11 @@ export default class JiraBasesPlugin extends Plugin {
     if (!this.settings.autoLookupEnabled) return;
 
     const text = editor.getValue();
-    const cursor = editor.getCursor();
     const hits = findBareKeysInText(
       text,
       this.settings.projectPrefixes,
-      cursor.line,
-      cursor.ch,
+      -1,
+      -1,
     );
     if (hits.length === 0) return;
 
@@ -239,12 +238,11 @@ export default class JiraBasesPlugin extends Plugin {
 
     // Re-read state before applying — user may have kept typing.
     const freshText = editor.getValue();
-    const freshCursor = editor.getCursor();
     const freshHits = findBareKeysInText(
       freshText,
       this.settings.projectPrefixes,
-      freshCursor.line,
-      freshCursor.ch,
+      -1,
+      -1,
     ).filter((h) => fetched.has(h.key));
     if (freshHits.length === 0) return;
 
