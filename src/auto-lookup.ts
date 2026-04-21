@@ -77,10 +77,15 @@ export interface IdleSchedulerDeps {
  * Single-timer debounce scheduler. Each `bump()` resets the quiet window; when
  * the window elapses without another bump, `flush` fires once.
  */
+const defaultTimerDeps: IdleSchedulerDeps = {
+  setTimeout: (fn, ms) => setTimeout(fn, ms),
+  clearTimeout: (t) => clearTimeout(t),
+};
+
 export function createIdleScheduler(
   idleMs: number,
   flush: () => void,
-  deps: IdleSchedulerDeps = { setTimeout, clearTimeout },
+  deps: IdleSchedulerDeps = defaultTimerDeps,
 ) {
   let t: Timer | null = null;
   return {
