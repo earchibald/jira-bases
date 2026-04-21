@@ -381,6 +381,20 @@ Plugins ship an optional `styles.css` adjacent to `main.js`. Obsidian loads it a
 - `obsidian create` forces `.md`. Use the filesystem `Write` tool for `.base`, `.canvas`, `.css`.
 - Never `obsidian <sub> --help`. Use `obsidian help` (top level) or reference docs.
 
+## 19b. Text-transform features must skip the YAML frontmatter
+
+Any feature that scans a markdown file and rewrites matched substrings (auto-linking, auto-tagging, inline replacement) has to **skip the leading `---` YAML block**. Feedback loops form easily:
+
+1. Indexer writes `jira_issues: [KEY-1, KEY-2]` to frontmatter.
+2. User edits the body.
+3. Auto-lookup scans the whole file, finds `KEY-1` / `KEY-2` *inside the frontmatter list*, rewrites them to `[KEY-1](url)`.
+4. Frontmatter is now invalid YAML. `metadataCache` returns no frontmatter for the file.
+5. Next indexer pass reads nothing → tries to "fix" the frontmatter → the loop continues.
+
+Detect the fence with a simple line walk: if line 0 is `---`, find the next `---` line; scan only lines after it. `frontmatterEndLine` in `src/auto-lookup.ts` is the reference impl.
+
+The same trap applies to: code fences (``` ... ```), inline code `` `...` ``, link URLs `[text](...)`, embedded LaTeX `$...$`. For a first pass, skipping frontmatter + not touching anything already inside `[](...)` / `[[...]]` covers 95% of cases without a full markdown parser.
+
 ## 20. Anti-patterns observed
 
 - **`setInterval` in `onload`** without `registerInterval` — leaks on reload.
