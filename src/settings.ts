@@ -1,15 +1,22 @@
 import { App, PluginSettingTab, Setting, Notice } from "obsidian";
 import type JiraBasesPlugin from "./main";
 
+export type AutoLookupMode = "minimal" | "primary" | "custom";
+
 export interface PluginSettings {
   baseUrl: string;
   encryptedTokens: Record<string, string>;
   linkTemplate: string;
   stubsFolder: string;
   projectPrefixes: string[];
+  autoLookupEnabled: boolean;
+  autoLookupIdleMs: number;
+  autoLookupMode: AutoLookupMode;
+  autoLookupTemplate: string;
 }
 
 export const DEFAULT_LINK_TEMPLATE = "[{key} {summary}]({url})";
+export const MINIMAL_LINK_TEMPLATE = "[{key}]({url})";
 
 export const DEFAULT_SETTINGS: PluginSettings = {
   baseUrl: "",
@@ -17,6 +24,10 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   linkTemplate: DEFAULT_LINK_TEMPLATE,
   stubsFolder: "JIRA",
   projectPrefixes: [],
+  autoLookupEnabled: false,
+  autoLookupIdleMs: 2000,
+  autoLookupMode: "minimal",
+  autoLookupTemplate: MINIMAL_LINK_TEMPLATE,
 };
 
 export class JiraBasesSettingTab extends PluginSettingTab {
@@ -134,6 +145,66 @@ export class JiraBasesSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             const trimmed = value.trim().replace(/^\/+|\/+$/g, "");
             this.plugin.settings.stubsFolder = trimmed || "JIRA";
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    containerEl.createEl("h3", { text: "Auto-lookup on type" });
+
+    new Setting(containerEl)
+      .setName("Enable auto-lookup")
+      .setDesc(
+        "Detect bare JIRA keys (matching configured prefixes) as you type and replace them with a link after an idle pause.",
+      )
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.autoLookupEnabled).onChange(async (v) => {
+          this.plugin.settings.autoLookupEnabled = v;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Idle delay (ms)")
+      .setDesc("How long to wait after the last keystroke before applying queued lookups.")
+      .addText((t) =>
+        t
+          .setPlaceholder("2000")
+          .setValue(String(this.plugin.settings.autoLookupIdleMs))
+          .onChange(async (v) => {
+            const n = parseInt(v, 10);
+            if (Number.isFinite(n) && n >= 100 && n <= 60000) {
+              this.plugin.settings.autoLookupIdleMs = n;
+              await this.plugin.saveSettings();
+            }
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Auto-lookup link style")
+      .setDesc(
+        "Minimal = [KEY](url). Primary = your Link template above. Custom = the template below.",
+      )
+      .addDropdown((d) =>
+        d
+          .addOption("minimal", "Minimal")
+          .addOption("primary", "Use primary template")
+          .addOption("custom", "Custom template")
+          .setValue(this.plugin.settings.autoLookupMode)
+          .onChange(async (v) => {
+            this.plugin.settings.autoLookupMode = v as "minimal" | "primary" | "custom";
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Custom auto-lookup template")
+      .setDesc("Used only when the style above is set to Custom. Same tokens as Link template.")
+      .addText((t) =>
+        t
+          .setPlaceholder("[{key}]({url})")
+          .setValue(this.plugin.settings.autoLookupTemplate)
+          .onChange(async (v) => {
+            this.plugin.settings.autoLookupTemplate = v;
             await this.plugin.saveSettings();
           }),
       );

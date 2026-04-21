@@ -14,8 +14,13 @@ import { IssueSuggestModal } from "./issue-suggest-modal";
 import {
   DEFAULT_SETTINGS,
   JiraBasesSettingTab,
+  MINIMAL_LINK_TEMPLATE,
   PluginSettings,
 } from "./settings";
+import {
+  createIdleScheduler,
+  findBareKeysInText,
+} from "./auto-lookup";
 import {
   collectAllKeys,
   findOrphanedStubs,
@@ -66,6 +71,9 @@ export default class JiraBasesPlugin extends Plugin {
   private debouncedRescan: Map<string, () => void> = new Map();
   private issueCache = createIssueCache();
   private issueService!: IssueService;
+  private autoLookupScheduler: ReturnType<typeof createIdleScheduler> | null = null;
+  private autoLookupFailed = new Set<string>();
+  private autoLookupPendingEditor: Editor | null = null;
 
   async onload() {
     await this.loadSettings();
@@ -146,6 +154,16 @@ export default class JiraBasesPlugin extends Plugin {
 
     registerHoverPreview(this, this.issueService, () => this.settings.baseUrl ?? "");
 
+    this.registerEvent(
+      this.app.workspace.on("editor-change", (editor) => {
+        if (!this.settings.autoLookupEnabled) return;
+        if (!this.settings.baseUrl) return;
+        if (this.settings.projectPrefixes.length === 0) return;
+        this.autoLookupPendingEditor = editor;
+        this.ensureAutoLookupScheduler().bump();
+      }),
+    );
+
     this.addCommand({
       id: "lookup-issue",
       name: "JIRA: Look up issue…",
@@ -157,6 +175,100 @@ export default class JiraBasesPlugin extends Plugin {
         new LookupModal(this.app, this.issueService, this.settings.baseUrl).open();
       },
     });
+  }
+
+  private ensureAutoLookupScheduler() {
+    if (this.autoLookupScheduler) return this.autoLookupScheduler;
+    this.autoLookupScheduler = createIdleScheduler(
+      this.settings.autoLookupIdleMs,
+      () => void this.flushAutoLookup(),
+    );
+    return this.autoLookupScheduler;
+  }
+
+  private resolveAutoLookupTemplate(): string {
+    switch (this.settings.autoLookupMode) {
+      case "primary":
+        return this.settings.linkTemplate;
+      case "custom":
+        return this.settings.autoLookupTemplate || MINIMAL_LINK_TEMPLATE;
+      case "minimal":
+      default:
+        return MINIMAL_LINK_TEMPLATE;
+    }
+  }
+
+  private async flushAutoLookup(): Promise<void> {
+    const editor = this.autoLookupPendingEditor;
+    this.autoLookupPendingEditor = null;
+    if (!editor) return;
+    if (!this.settings.autoLookupEnabled) return;
+
+    const text = editor.getValue();
+    const cursor = editor.getCursor();
+    const hits = findBareKeysInText(
+      text,
+      this.settings.projectPrefixes,
+      cursor.line,
+      cursor.ch,
+    );
+    if (hits.length === 0) return;
+
+    const baseStripped = this.settings.baseUrl.replace(/\/+$/, "");
+    const template = this.resolveAutoLookupTemplate();
+    const uniqueKeys = [...new Set(hits.map((h) => h.key))].filter(
+      (k) => !this.autoLookupFailed.has(k),
+    );
+    if (uniqueKeys.length === 0) return;
+
+    const client = this.makeClient();
+    const fetched = new Map<string, { summary: string; status: string; type: string }>();
+    for (const key of uniqueKeys) {
+      const r = await client.getIssue(key);
+      if (r.ok) {
+        fetched.set(key, {
+          summary: r.value.summary,
+          status: r.value.status,
+          type: r.value.type,
+        });
+      } else {
+        this.autoLookupFailed.add(key);
+      }
+    }
+    if (fetched.size === 0) return;
+
+    // Re-read state before applying — user may have kept typing.
+    const freshText = editor.getValue();
+    const freshCursor = editor.getCursor();
+    const freshHits = findBareKeysInText(
+      freshText,
+      this.settings.projectPrefixes,
+      freshCursor.line,
+      freshCursor.ch,
+    ).filter((h) => fetched.has(h.key));
+    if (freshHits.length === 0) return;
+
+    // Apply bottom-up (latest line first, latest col first within a line)
+    // so earlier offsets remain valid.
+    freshHits.sort(
+      (a, b) => b.lineStart - a.lineStart || b.start - a.start,
+    );
+    for (const hit of freshHits) {
+      const issue = fetched.get(hit.key)!;
+      const url = escapeLinkUrl(`${baseStripped}/browse/${hit.key}`);
+      const replacement = renderTemplate(template, {
+        key: escapeLinkText(hit.key),
+        summary: escapeLinkText(issue.summary),
+        status: escapeLinkText(issue.status),
+        type: escapeLinkText(issue.type),
+        url,
+      });
+      editor.replaceRange(
+        replacement,
+        { line: hit.lineStart, ch: hit.start },
+        { line: hit.lineStart, ch: hit.end },
+      );
+    }
   }
 
   private scheduleRescan(path: string): void {
