@@ -46,8 +46,23 @@ export function findBareKeysInLine(
 }
 
 /**
+ * Return the line index where the YAML frontmatter ends (exclusive), or 0 if
+ * there is no frontmatter. A frontmatter block is `---` on line 0, followed by
+ * content, terminated by a `---` line. Anything inside that block is off
+ * limits for auto-lookup — rewriting bare keys there corrupts YAML.
+ */
+export function frontmatterEndLine(lines: string[]): number {
+  if (lines.length === 0 || lines[0].trim() !== "---") return 0;
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].trim() === "---") return i + 1;
+  }
+  return 0;
+}
+
+/**
  * Scan `text` line-by-line for bare keys. `cursorLine`/`cursorCol` mark the
  * cursor's editor position (pass `cursorLine: -1` to disable cursor skipping).
+ * Skips any lines inside a leading YAML frontmatter block.
  */
 export function findBareKeysInText(
   text: string,
@@ -57,7 +72,8 @@ export function findBareKeysInText(
 ): BareKeyHit[] {
   const out: BareKeyHit[] = [];
   const lines = text.split("\n");
-  for (let i = 0; i < lines.length; i++) {
+  const bodyStart = frontmatterEndLine(lines);
+  for (let i = bodyStart; i < lines.length; i++) {
     const col = i === cursorLine ? cursorCol : -1;
     for (const hit of findBareKeysInLine(lines[i], prefixes, col)) {
       out.push({ ...hit, lineStart: i });

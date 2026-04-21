@@ -59,6 +59,26 @@ describe("findBareKeysInText", () => {
     const hits = findBareKeysInText(text, ["JB"], 0, 2);
     expect(hits.map((h) => `${h.key}@${h.lineStart}`)).toEqual(["JB-2@1"]);
   });
+
+  it("skips bare keys inside the YAML frontmatter block", () => {
+    const text = [
+      "---",
+      "jira_issues:",
+      "  - JB-1",
+      "  - JB-2",
+      "---",
+      "",
+      "body mentions JB-3",
+    ].join("\n");
+    const hits = findBareKeysInText(text, ["JB"], -1, -1);
+    expect(hits.map((h) => h.key)).toEqual(["JB-3"]);
+  });
+
+  it("does not treat a lone `---` at top as frontmatter (no closing fence)", () => {
+    const text = "---\nJB-1 in body after horizontal rule";
+    const hits = findBareKeysInText(text, ["JB"], -1, -1);
+    expect(hits.map((h) => h.key)).toEqual(["JB-1"]);
+  });
 });
 
 describe("createIdleScheduler", () => {
