@@ -1,7 +1,7 @@
 {
   "id": "jira-bases",
   "name": "JIRA Bases",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "minAppVersion": "1.5.0",
   "description": "JIRA Data Center integration for smart links, Bases metadata, and issue lookup.",
   "author": "Eugene Archibald",
