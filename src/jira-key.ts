@@ -28,6 +28,36 @@ export function findKeyInText(text: string): string | null {
 
 const KEY_GLOBAL_RE = /\b[A-Z][A-Z0-9]+-\d+\b/g;
 
+const MD_LINK_GLOBAL_RE = /\[([^\]\n]*)\]\(([^)\s]+)\)/g;
+const MD_LINK_ANCHORED_RE = /^\[([^\]\n]*)\]\(([^)\s]+)\)$/;
+
+export function parseMarkdownLink(
+  text: string,
+): { text: string; url: string } | null {
+  const m = text.trim().match(MD_LINK_ANCHORED_RE);
+  return m ? { text: m[1], url: m[2] } : null;
+}
+
+/**
+ * Find a markdown link `[text](url)` whose span covers `col` in `line`.
+ * Returns the link parts plus its [start, end) range within `line`.
+ */
+export function findLinkAtCol(
+  line: string,
+  col: number,
+): { text: string; url: string; start: number; end: number } | null {
+  MD_LINK_GLOBAL_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = MD_LINK_GLOBAL_RE.exec(line))) {
+    const start = m.index;
+    const end = start + m[0].length;
+    if (col >= start && col <= end) {
+      return { text: m[1], url: m[2], start, end };
+    }
+  }
+  return null;
+}
+
 /**
  * Find a JIRA key whose span covers `col` in `line`. The cursor is considered
  * "on" a key when it sits at the start, end, or anywhere inside the key. Returns

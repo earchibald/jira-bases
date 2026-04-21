@@ -34,7 +34,13 @@ import { createIssueCache } from "./issue-cache";
 import { createIssueService, IssueService } from "./issue-service";
 import { registerHoverPreview } from "./hover-preview";
 import { LookupModal } from "./lookup-modal";
-import { findKeyAtCol, findKeyInText } from "./jira-key";
+import {
+  extractKeyFromHref,
+  findKeyAtCol,
+  findKeyInText,
+  findLinkAtCol,
+  parseMarkdownLink,
+} from "./jira-key";
 import type { Editor } from "obsidian";
 
 const obsidianRequest: HttpRequest = async ({ url, headers }) => {
@@ -383,23 +389,64 @@ export default class JiraBasesPlugin extends Plugin {
 
     // Establish the effective selection. If the editor has a real selection,
     // honor it; otherwise, if the cursor is on a JIRA key, expand to that key.
+    const baseStripped = baseUrl.replace(/\/+$/, "");
     let selection = editor.getSelection();
     if (!selection) {
       const cursor = editor.getCursor();
       const line = editor.getLine(cursor.line);
-      const hit = findKeyAtCol(line, cursor.ch);
-      if (hit) {
+      const link = findLinkAtCol(line, cursor.ch);
+      const linkKey = link
+        ? (extractKeyFromHref(link.url, baseUrl) ?? findKeyInText(link.text))
+        : null;
+      if (link && linkKey) {
         editor.setSelection(
-          { line: cursor.line, ch: hit.start },
-          { line: cursor.line, ch: hit.end },
+          { line: cursor.line, ch: link.start },
+          { line: cursor.line, ch: link.end },
         );
-        selection = hit.key;
+        selection = line.slice(link.start, link.end);
+      } else {
+        const hit = findKeyAtCol(line, cursor.ch);
+        if (hit) {
+          editor.setSelection(
+            { line: cursor.line, ch: hit.start },
+            { line: cursor.line, ch: hit.end },
+          );
+          selection = hit.key;
+        }
+      }
+    }
+
+    const client = this.makeClient();
+
+    // Case A0: selection is an existing markdown link pointing at a JIRA
+    // issue — reformat it to the configured linkTemplate.
+    if (selection) {
+      const parsed = parseMarkdownLink(selection);
+      const linkKey = parsed
+        ? (extractKeyFromHref(parsed.url, baseUrl) ??
+          findKeyInText(parsed.text))
+        : null;
+      if (parsed && linkKey) {
+        const url = escapeLinkUrl(`${baseStripped}/browse/${linkKey}`);
+        const r = await client.getIssue(linkKey);
+        if (!r.ok) {
+          new Notice(errorMessage(r.error));
+          return;
+        }
+        editor.replaceSelection(
+          renderTemplate(this.settings.linkTemplate, {
+            key: escapeLinkText(r.value.key),
+            summary: escapeLinkText(r.value.summary),
+            status: escapeLinkText(r.value.status),
+            type: escapeLinkText(r.value.type),
+            url,
+          }),
+        );
+        return;
       }
     }
 
     const detectedKey = selection ? findKeyInText(selection) : null;
-    const baseStripped = baseUrl.replace(/\/+$/, "");
-    const client = this.makeClient();
 
     // Case A: we know the key. If the selection is just the bare key, render
     // the configured linkTemplate (we need the issue's summary etc.).

@@ -4,6 +4,8 @@ import {
   extractKeyFromHref,
   findKeyInText,
   findKeyAtCol,
+  findLinkAtCol,
+  parseMarkdownLink,
 } from "./jira-key";
 
 describe("parseKeyOrUrl", () => {
@@ -89,5 +91,57 @@ describe("findKeyAtCol", () => {
   it("picks the key under the cursor when multiple are on the line", () => {
     const l = "ABC-1 and DEF-22 here";
     expect(findKeyAtCol(l, 12)).toEqual({ key: "DEF-22", start: 10, end: 16 });
+  });
+});
+
+describe("parseMarkdownLink", () => {
+  it("parses a well-formed link", () => {
+    expect(
+      parseMarkdownLink("[SRE-1234](https://jira.me.com/browse/SRE-1234)"),
+    ).toEqual({ text: "SRE-1234", url: "https://jira.me.com/browse/SRE-1234" });
+  });
+  it("trims surrounding whitespace", () => {
+    expect(parseMarkdownLink("  [x](https://y)  ")).toEqual({
+      text: "x",
+      url: "https://y",
+    });
+  });
+  it("returns null for bare text", () => {
+    expect(parseMarkdownLink("SRE-1234")).toBeNull();
+  });
+  it("returns null when link isn't the whole string", () => {
+    expect(parseMarkdownLink("see [x](y) here")).toBeNull();
+  });
+});
+
+describe("findLinkAtCol", () => {
+  const line = "text [SRE-1](https://jira.me.com/browse/SRE-1) more";
+  //            0123456789012345678901234567890123456789012345678901
+  //                 ^5                                          ^46
+
+  it("matches when col is inside the link", () => {
+    const hit = findLinkAtCol(line, 10);
+    expect(hit).toEqual({
+      text: "SRE-1",
+      url: "https://jira.me.com/browse/SRE-1",
+      start: 5,
+      end: 46,
+    });
+  });
+  it("matches at start and end of link", () => {
+    expect(findLinkAtCol(line, 5)?.start).toBe(5);
+    expect(findLinkAtCol(line, 46)?.end).toBe(46);
+  });
+  it("returns null when col is outside any link", () => {
+    expect(findLinkAtCol(line, 2)).toBeNull();
+    expect(findLinkAtCol(line, 48)).toBeNull();
+  });
+  it("returns null when line has no link", () => {
+    expect(findLinkAtCol("just SRE-1 bare", 7)).toBeNull();
+  });
+  it("picks the link under the cursor when multiple are on the line", () => {
+    const l = "[a](u1) [b](u2)";
+    const hit = findLinkAtCol(l, 10);
+    expect(hit).toEqual({ text: "b", url: "u2", start: 8, end: 15 });
   });
 });
