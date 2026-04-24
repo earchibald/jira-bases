@@ -41,10 +41,11 @@ import {
   findLinkAtCol,
   parseMarkdownLink,
 } from "./jira-key";
+import { CommentIssueSuggestModal } from "./comment-issue-modal";
 import type { Editor } from "obsidian";
 
-const obsidianRequest: HttpRequest = async ({ url, headers }) => {
-  const r = await requestUrl({ url, headers, method: "GET", throw: false });
+const obsidianRequest: HttpRequest = async ({ url, headers, method, body }) => {
+  const r = await requestUrl({ url, headers, method: method ?? "GET", body: body ?? undefined, throw: false });
   return {
     status: r.status,
     text: async () => r.text,
@@ -154,6 +155,9 @@ export default class JiraBasesPlugin extends Plugin {
           throw new Error("not used by hover/lookup");
         },
         getIssueDetails: (key) => this.makeClient().getIssueDetails(key),
+        addComment: async () => {
+          throw new Error("not used by hover/lookup");
+        },
       },
       this.issueCache,
     );
@@ -180,6 +184,12 @@ export default class JiraBasesPlugin extends Plugin {
         }
         new LookupModal(this.app, this.issueService, this.settings.baseUrl).open();
       },
+    });
+
+    this.addCommand({
+      id: "add-comment",
+      name: "JIRA: Add comment to issue…",
+      editorCallback: (editor) => this.addCommentToIssue(editor),
     });
   }
 
@@ -494,6 +504,44 @@ export default class JiraBasesPlugin extends Plugin {
               url,
             }),
           );
+        }
+      },
+    });
+    modal.open();
+  }
+
+  async addCommentToIssue(editor: Editor): Promise<void> {
+    if (!this.settings.baseUrl) {
+      new Notice("Set your JIRA base URL in plugin settings.");
+      return;
+    }
+    const selection = editor.getSelection();
+    if (!selection || !selection.trim()) {
+      new Notice("Select text to send as a comment.");
+      return;
+    }
+    const client = this.makeClient();
+
+    const file = this.app.workspace.getActiveFile();
+    let fmKeys: string[] = [];
+    if (file) {
+      const cache = this.app.metadataCache.getFileCache(file);
+      const raw = cache?.frontmatter?.jira_issues;
+      if (Array.isArray(raw)) {
+        fmKeys = raw.filter((x: unknown): x is string => typeof x === "string");
+      }
+    }
+
+    const modal = new CommentIssueSuggestModal({
+      app: this.app,
+      client,
+      frontmatterKeys: fmKeys,
+      onChoose: async (issue: Issue) => {
+        const result = await client.addComment(issue.key, selection);
+        if (result.ok) {
+          new Notice(`Comment added to ${issue.key}.`);
+        } else {
+          new Notice(errorMessage(result.error));
         }
       },
     });

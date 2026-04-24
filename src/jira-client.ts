@@ -23,6 +23,8 @@ export interface HttpResponseLike {
 export type HttpRequest = (req: {
   url: string;
   headers: Record<string, string>;
+  method?: string;
+  body?: string;
 }) => Promise<HttpResponseLike>;
 
 export type JiraError =
@@ -42,6 +44,7 @@ export interface JiraClient {
   getIssue(key: string): Promise<Result<Issue, JiraError>>;
   searchIssues(query: string, limit: number): Promise<Result<Issue[], JiraError>>;
   getIssueDetails(key: string): Promise<Result<IssueDetails, JiraError>>;
+  addComment(key: string, commentText: string): Promise<Result<void, JiraError>>;
 }
 
 export interface JiraClientOptions {
@@ -50,8 +53,8 @@ export interface JiraClientOptions {
   request?: HttpRequest;
 }
 
-const defaultRequest: HttpRequest = async ({ url, headers }) => {
-  const response = await fetch(url, { headers });
+const defaultRequest: HttpRequest = async ({ url, headers, method, body }) => {
+  const response = await fetch(url, { headers, method, body });
   return {
     status: response.status,
     text: () => response.text(),
@@ -358,6 +361,56 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
       } catch (e) {
         return { ok: false, error: { kind: "parse", message: (e as Error).message } };
       }
+    },
+
+    async addComment(key, commentText) {
+      const token = await opts.getToken();
+      if (!token) return { ok: false, error: { kind: "no-token" } };
+
+      let response: HttpResponseLike;
+      try {
+        response = await request({
+          url: `${base}/rest/api/2/issue/${encodeURIComponent(key)}/comment`,
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ body: commentText }),
+        });
+      } catch (e) {
+        return {
+          ok: false,
+          error: { kind: "network", message: (e as Error).message },
+        };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, error: { kind: "not-found", key } };
+      }
+      if (response.status === 401 || response.status === 403) {
+        return {
+          ok: false,
+          error: {
+            kind: "auth",
+            status: response.status as 401 | 403,
+            message: await safeText(response),
+          },
+        };
+      }
+      if (response.status < 200 || response.status >= 300) {
+        return {
+          ok: false,
+          error: {
+            kind: "http",
+            status: response.status,
+            message: await safeText(response),
+          },
+        };
+      }
+
+      return { ok: true, value: undefined };
     },
   };
 }

@@ -29,6 +29,9 @@ function fakeClient(impl: (key: string) => Promise<Result<IssueDetails, JiraErro
       throw new Error("not used");
     },
     getIssueDetails: vi.fn(impl) as JiraClient["getIssueDetails"],
+    async addComment() {
+      throw new Error("not used");
+    },
   };
 }
 
