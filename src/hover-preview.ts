@@ -64,19 +64,6 @@ function openPopover(
   const popover = document.createElement("div");
   popover.className = POPOVER_CLASS;
   popover.setAttribute("data-jb-anchor-key", key);
-  Object.assign(popover.style, {
-    position: "absolute",
-    zIndex: "1000",
-    background: "var(--background-primary)",
-    color: "var(--text-normal)",
-    border: "1px solid var(--background-modifier-border)",
-    borderRadius: "6px",
-    padding: "8px 10px",
-    maxWidth: "420px",
-    boxShadow: "0 4px 14px rgba(0,0,0,0.25)",
-    fontSize: "var(--font-ui-small)",
-    lineHeight: "1.4",
-  } as Partial<CSSStyleDeclaration>);
 
   const rect = anchor.getBoundingClientRect();
   popover.style.left = `${rect.left + window.scrollX}px`;
