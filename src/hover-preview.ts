@@ -79,9 +79,34 @@ function openPopover(
   } as Partial<CSSStyleDeclaration>);
 
   const rect = anchor.getBoundingClientRect();
-  popover.style.left = `${rect.left + window.scrollX}px`;
-  popover.style.top = `${rect.bottom + window.scrollY + 4}px`;
+
+  // Append to body first to measure dimensions
   document.body.appendChild(popover);
+  const popoverRect = popover.getBoundingClientRect();
+
+  // Calculate viewport boundaries
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const scrollX = window.scrollX;
+  const scrollY = window.scrollY;
+
+  // Default position: below and to the left of anchor
+  let left = rect.left;
+  let top = rect.bottom + 4;
+
+  // Check right boundary - if popover would overflow, position to the left of anchor
+  if (rect.left + popoverRect.width > viewportWidth) {
+    left = Math.max(0, rect.right - popoverRect.width);
+  }
+
+  // Check bottom boundary - if popover would overflow, position above anchor
+  if (rect.bottom + popoverRect.height + 4 > viewportHeight) {
+    top = rect.top - popoverRect.height - 4;
+  }
+
+  // Apply final position with scroll offsets
+  popover.style.left = `${left + scrollX}px`;
+  popover.style.top = `${top + scrollY}px`;
 
   service.lookup(key, (state) => renderIssue(popover, state, { baseUrl }));
 
