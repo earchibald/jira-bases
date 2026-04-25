@@ -435,7 +435,7 @@ export default class JiraBasesPlugin extends Plugin {
         : null;
       if (parsed && linkKey) {
         const url = escapeLinkUrl(`${baseStripped}/browse/${linkKey}`);
-        const r = await client.getIssue(linkKey);
+        const r = await client.getIssueDetails(linkKey);
         if (!r.ok) {
           new Notice(errorMessage(r.error));
           return;
@@ -462,7 +462,7 @@ export default class JiraBasesPlugin extends Plugin {
     if (detectedKey && selection) {
       const url = escapeLinkUrl(`${baseStripped}/browse/${detectedKey}`);
       if (selection.trim() === detectedKey) {
-        const r = await client.getIssue(detectedKey);
+        const r = await client.getIssueDetails(detectedKey);
         if (!r.ok) {
           new Notice(errorMessage(r.error));
           return;
