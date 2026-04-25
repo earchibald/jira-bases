@@ -30,8 +30,8 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   autoLookupIdleMs: 2000,
   autoLookupMode: "minimal",
   autoLookupTemplate: MINIMAL_LINK_TEMPLATE,
-  autoLookupFailedKeysTTLMs: 300000,
-  autoLookupFailedKeysMaxSize: 100,
+  autoLookupFailedKeysTTLMs: 600000,
+  autoLookupFailedKeysMaxSize: 500,
 };
 
 export class JiraBasesSettingTab extends PluginSettingTab {
@@ -256,13 +256,15 @@ export class JiraBasesSettingTab extends PluginSettingTab {
       )
       .addText((t) =>
         t
-          .setPlaceholder("300000")
+          .setPlaceholder("600000")
           .setValue(String(this.plugin.settings.autoLookupFailedKeysTTLMs))
           .onChange(async (v) => {
             const n = parseInt(v, 10);
             if (Number.isFinite(n) && n >= 0 && n <= 3600000) {
               this.plugin.settings.autoLookupFailedKeysTTLMs = n;
               await this.plugin.saveSettings();
+              // Recreate tracker with new config
+              this.plugin.recreateFailedKeysTracker();
             }
           }),
       );
@@ -274,13 +276,15 @@ export class JiraBasesSettingTab extends PluginSettingTab {
       )
       .addText((t) =>
         t
-          .setPlaceholder("100")
+          .setPlaceholder("500")
           .setValue(String(this.plugin.settings.autoLookupFailedKeysMaxSize))
           .onChange(async (v) => {
             const n = parseInt(v, 10);
             if (Number.isFinite(n) && n >= 1 && n <= 1000) {
               this.plugin.settings.autoLookupFailedKeysMaxSize = n;
               await this.plugin.saveSettings();
+              // Recreate tracker with new config
+              this.plugin.recreateFailedKeysTracker();
             }
           }),
       );

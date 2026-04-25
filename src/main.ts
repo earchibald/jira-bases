@@ -83,6 +83,13 @@ export default class JiraBasesPlugin extends Plugin {
   private autoLookupFailed!: FailedKeysTracker;
   private autoLookupPendingEditor: Editor | null = null;
 
+  recreateFailedKeysTracker(): void {
+    this.autoLookupFailed = createFailedKeysTracker({
+      ttlMs: this.settings.autoLookupFailedKeysTTLMs,
+      maxSize: this.settings.autoLookupFailedKeysMaxSize,
+    });
+  }
+
   async onload() {
     await this.loadSettings();
     this.secrets = createSecretStore({
@@ -93,10 +100,7 @@ export default class JiraBasesPlugin extends Plugin {
         await this.saveSettings();
       },
     });
-    this.autoLookupFailed = createFailedKeysTracker({
-      ttlMs: this.settings.autoLookupFailedKeysTTLMs,
-      maxSize: this.settings.autoLookupFailedKeysMaxSize,
-    });
+    this.recreateFailedKeysTracker();
     this.addSettingTab(new JiraBasesSettingTab(this.app, this));
 
     this.addCommand({
