@@ -250,5 +250,45 @@ export class JiraBasesSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           }),
       );
+
+    containerEl.createEl("h3", { text: "Auto-refresh stubs" });
+
+    new Setting(containerEl)
+      .setName("Enable auto-refresh")
+      .setDesc(
+        "Automatically refresh all stub files at a regular interval to keep issue data up-to-date.",
+      )
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.autoRefreshEnabled).onChange(async (v) => {
+          this.plugin.settings.autoRefreshEnabled = v;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Refresh interval (minutes)")
+      .setDesc("How often to automatically refresh all stub files (minimum 1 minute).")
+      .addText((t) =>
+        t
+          .setPlaceholder("60")
+          .setValue(String(this.plugin.settings.autoRefreshIntervalMinutes))
+          .onChange(async (v) => {
+            const n = parseInt(v, 10);
+            if (Number.isFinite(n) && n >= 1) {
+              this.plugin.settings.autoRefreshIntervalMinutes = n;
+              await this.plugin.saveSettings();
+            }
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Refresh on startup")
+      .setDesc("Automatically refresh all stub files when Obsidian starts.")
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.autoRefreshOnStartup).onChange(async (v) => {
+          this.plugin.settings.autoRefreshOnStartup = v;
+          await this.plugin.saveSettings();
+        }),
+      );
   }
 }
