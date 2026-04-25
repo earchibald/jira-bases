@@ -119,6 +119,7 @@ describe("generateBase", () => {
     };
     const base = generateBase(config);
     expect(base).toMatch(/^filters:\n  and:\n    - file\.inFolder/);
+    expect(base).toContain('file.ext == "md"');
     expect(base).toContain("views:\n  - type: table");
     expect(base).toContain("order:\n      - file.name");
   });

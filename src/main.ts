@@ -772,9 +772,10 @@ export default class JiraBasesPlugin extends Plugin {
         stubsFolder: this.settings.stubsFolder,
       });
       const vault = this.makeVaultAdapter();
-      const stubsFolder = this.settings.stubsFolder.replace(/\/+$/, "");
-      const baseFilePath = `${stubsFolder}/JIRA Issues.base`;
+      const stubsFolder = this.settings.stubsFolder.replace(/^\/+|\/+$/g, "");
+      const baseFilePath = stubsFolder ? `${stubsFolder}/JIRA Issues.base` : `JIRA Issues.base`;
       try {
+        if (stubsFolder) await vault.ensureFolder(stubsFolder);
         await vault.write(baseFilePath, baseContent);
         new Notice(`Bases view created at ${baseFilePath}`);
       } catch (e) {

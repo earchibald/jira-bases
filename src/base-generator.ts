@@ -42,6 +42,7 @@ export function generateBase(config: BaseConfig): string {
   return `filters:
   and:
     - file.inFolder("${escapedFolder}")
+    - file.ext == "md"
 views:
   - type: table
     name: "${viewName}"
