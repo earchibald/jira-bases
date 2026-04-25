@@ -13,6 +13,9 @@ export interface PluginSettings {
   autoLookupIdleMs: number;
   autoLookupMode: AutoLookupMode;
   autoLookupTemplate: string;
+  autoRefreshEnabled: boolean;
+  autoRefreshIntervalMinutes: number;
+  autoRefreshOnStartup: boolean;
 }
 
 export const DEFAULT_LINK_TEMPLATE = "[{key} {summary}]({url})";
@@ -28,6 +31,9 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   autoLookupIdleMs: 2000,
   autoLookupMode: "minimal",
   autoLookupTemplate: MINIMAL_LINK_TEMPLATE,
+  autoRefreshEnabled: false,
+  autoRefreshIntervalMinutes: 60,
+  autoRefreshOnStartup: false,
 };
 
 export class JiraBasesSettingTab extends PluginSettingTab {
