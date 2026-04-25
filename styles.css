@@ -1,0 +1,106 @@
+/* JIRA Bases Plugin Styles */
+
+/* Hover Popover */
+.jb-hover-popover {
+  /* position, left, top are set dynamically inline */
+  z-index: 1000;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  max-width: 420px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  font-size: var(--font-ui-small);
+  line-height: 1.4;
+}
+
+/* Issue Preview Container */
+.jb-issue-preview {
+  /* Container for issue preview content */
+}
+
+/* Header with key, status, and updated timestamp */
+.jb-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+/* Issue key link */
+.jb-key > a {
+  font-weight: 600;
+  text-decoration: none;
+}
+
+/* Status badge */
+.jb-status {
+  font-size: var(--font-ui-smaller);
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Updated timestamp */
+.jb-updated {
+  margin-left: auto;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+}
+
+/* Issue summary */
+.jb-summary {
+  font-size: var(--font-ui-medium);
+  font-weight: 500;
+  margin-bottom: 6px;
+  line-height: 1.3;
+}
+
+/* Meta information container */
+.jb-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+/* Meta item container */
+.jb-meta-item {
+  /* Container for label-value pairs */
+}
+
+/* Meta label */
+.jb-meta-label {
+  color: var(--text-faint);
+}
+
+/* Meta value */
+.jb-meta-value {
+  color: var(--text-normal);
+}
+
+/* Loading state */
+.jb-loading {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Error state */
+.jb-error {
+  color: var(--text-error, #e74c3c);
+  font-size: var(--font-ui-small);
+}
+
+/* Refreshing indicator */
+.jb-refreshing {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-style: italic;
+  margin-top: 4px;
+}
