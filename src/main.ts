@@ -412,6 +412,7 @@ export default class JiraBasesPlugin extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
+    this.setupAutoRefresh();
   }
 
   async insertIssueLink(editor: Editor): Promise<void> {
