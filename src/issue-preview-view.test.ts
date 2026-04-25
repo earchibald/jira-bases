@@ -48,6 +48,28 @@ describe("renderIssue", () => {
     expect(el.querySelector(".jb-meta")?.textContent ?? "").toContain("Unassigned");
   });
 
+  it("renders labels when present", () => {
+    renderIssue(
+      el,
+      { state: "ok", issue: { ...ISSUE, labels: ["bug", "frontend"] }, refreshing: false },
+      CTX,
+    );
+    const meta = el.querySelector(".jb-meta")?.textContent ?? "";
+    expect(meta).toContain("Labels:");
+    expect(meta).toContain("bug, frontend");
+  });
+
+  it("renders '—' when labels are empty", () => {
+    renderIssue(
+      el,
+      { state: "ok", issue: { ...ISSUE, labels: [] }, refreshing: false },
+      CTX,
+    );
+    const meta = el.querySelector(".jb-meta")?.textContent ?? "";
+    expect(meta).toContain("Labels:");
+    expect(meta).toContain("—");
+  });
+
   it("renders refreshing indicator on stale state", () => {
     renderIssue(el, { state: "stale", issue: ISSUE, refreshing: true }, CTX);
     expect(el.querySelector(".jb-refreshing")).not.toBeNull();
