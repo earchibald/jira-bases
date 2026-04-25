@@ -81,6 +81,7 @@ export default class JiraBasesPlugin extends Plugin {
   private autoLookupScheduler: ReturnType<typeof createIdleScheduler> | null = null;
   private autoLookupFailed = new Set<string>();
   private autoLookupPendingEditor: Editor | null = null;
+  private autoRefreshIntervalId: number | null = null;
 
   async onload() {
     await this.loadSettings();
@@ -191,6 +192,11 @@ export default class JiraBasesPlugin extends Plugin {
       name: "JIRA: Add comment to issue…",
       editorCallback: (editor) => this.addCommentToIssue(editor),
     });
+
+    this.setupAutoRefresh();
+    if (this.settings.autoRefreshOnStartup && this.settings.autoRefreshEnabled && this.settings.baseUrl) {
+      void this.syncIssueStubs();
+    }
   }
 
   private ensureAutoLookupScheduler() {
@@ -283,6 +289,24 @@ export default class JiraBasesPlugin extends Plugin {
         { line: hit.lineStart, ch: hit.end },
       );
     }
+  }
+
+  private setupAutoRefresh(): void {
+    if (this.autoRefreshIntervalId !== null) {
+      window.clearInterval(this.autoRefreshIntervalId);
+      this.autoRefreshIntervalId = null;
+    }
+
+    if (!this.settings.autoRefreshEnabled || !this.settings.baseUrl) {
+      return;
+    }
+
+    const intervalMs = this.settings.autoRefreshIntervalMinutes * 60 * 1000;
+    this.autoRefreshIntervalId = this.registerInterval(
+      window.setInterval(() => {
+        void this.syncIssueStubs();
+      }, intervalMs),
+    );
   }
 
   private scheduleRescan(path: string): void {
