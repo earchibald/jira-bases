@@ -82,6 +82,9 @@ export default class JiraBasesPlugin extends Plugin {
   private autoLookupFailed = new Set<string>();
   private autoLookupPendingEditor: Editor | null = null;
   private autoRefreshIntervalId: number | null = null;
+  private statusBarItem: HTMLElement | null = null;
+  private lastSyncTimestamp: number | null = null;
+  private statusBarUpdateIntervalId: number | null = null;
 
   async onload() {
     await this.loadSettings();
@@ -194,6 +197,7 @@ export default class JiraBasesPlugin extends Plugin {
     });
 
     this.setupAutoRefresh();
+    this.setupStatusBar();
     if (this.settings.autoRefreshOnStartup && this.settings.autoRefreshEnabled && this.settings.baseUrl) {
       void this.syncIssueStubs();
     }
@@ -309,6 +313,67 @@ export default class JiraBasesPlugin extends Plugin {
     );
   }
 
+  private setupStatusBar(): void {
+    if (this.statusBarUpdateIntervalId !== null) {
+      window.clearInterval(this.statusBarUpdateIntervalId);
+      this.statusBarUpdateIntervalId = null;
+    }
+
+    if (!this.settings.autoRefreshEnabled || !this.settings.baseUrl) {
+      if (this.statusBarItem) {
+        this.statusBarItem.remove();
+        this.statusBarItem = null;
+      }
+      return;
+    }
+
+    if (!this.statusBarItem) {
+      this.statusBarItem = this.addStatusBarItem();
+    }
+
+    this.updateStatusBar();
+
+    this.statusBarUpdateIntervalId = this.registerInterval(
+      window.setInterval(() => {
+        this.updateStatusBar();
+      }, 60000),
+    );
+  }
+
+  private updateStatusBar(): void {
+    if (!this.statusBarItem) return;
+
+    const parts: string[] = [];
+
+    if (this.lastSyncTimestamp !== null) {
+      const elapsed = Date.now() - this.lastSyncTimestamp;
+      const minutes = Math.floor(elapsed / 60000);
+      if (minutes < 1) {
+        parts.push("JIRA: Last synced <1 min ago");
+      } else if (minutes === 1) {
+        parts.push("JIRA: Last synced 1 min ago");
+      } else {
+        parts.push(`JIRA: Last synced ${minutes} min ago`);
+      }
+    } else {
+      parts.push("JIRA: Not synced yet");
+    }
+
+    if (this.settings.autoRefreshEnabled && this.lastSyncTimestamp !== null) {
+      const intervalMs = this.settings.autoRefreshIntervalMinutes * 60 * 1000;
+      const nextSyncTime = this.lastSyncTimestamp + intervalMs;
+      const remaining = nextSyncTime - Date.now();
+      const remainingMinutes = Math.ceil(remaining / 60000);
+      if (remainingMinutes > 0) {
+        parts.push(`Next: ${remainingMinutes} min`);
+      } else {
+        parts.push("Next: <1 min");
+      }
+    }
+
+    this.statusBarItem.setText(parts.join(" | "));
+  }
+
   private scheduleRescan(path: string): void {
     let fn = this.debouncedRescan.get(path);
     if (!fn) {
@@ -413,6 +478,7 @@ export default class JiraBasesPlugin extends Plugin {
   async saveSettings() {
     await this.saveData(this.settings);
     this.setupAutoRefresh();
+    this.setupStatusBar();
   }
 
   async insertIssueLink(editor: Editor): Promise<void> {
@@ -633,6 +699,8 @@ export default class JiraBasesPlugin extends Plugin {
         if (content.includes("jira_issues")) await rescanFile(deps, path);
       }
     }
+    this.lastSyncTimestamp = Date.now();
+    this.updateStatusBar();
     if (failures.length === 0) {
       new Notice(`Synced ${synced} stubs.`);
     } else {
