@@ -13,6 +13,9 @@ export interface PluginSettings {
   autoLookupIdleMs: number;
   autoLookupMode: AutoLookupMode;
   autoLookupTemplate: string;
+  autoRefreshEnabled: boolean;
+  autoRefreshIntervalMinutes: number;
+  autoRefreshOnStartup: boolean;
 }
 
 export const DEFAULT_LINK_TEMPLATE = "[{key} {summary}]({url})";
@@ -28,6 +31,9 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   autoLookupIdleMs: 2000,
   autoLookupMode: "minimal",
   autoLookupTemplate: MINIMAL_LINK_TEMPLATE,
+  autoRefreshEnabled: false,
+  autoRefreshIntervalMinutes: 60,
+  autoRefreshOnStartup: false,
 };
 
 export class JiraBasesSettingTab extends PluginSettingTab {
@@ -243,6 +249,46 @@ export class JiraBasesSettingTab extends PluginSettingTab {
               .filter((s) => /^[A-Z][A-Z0-9]+$/.test(s));
             await this.plugin.saveSettings();
           }),
+      );
+
+    containerEl.createEl("h3", { text: "Auto-refresh stubs" });
+
+    new Setting(containerEl)
+      .setName("Enable auto-refresh")
+      .setDesc(
+        "Automatically refresh all stub files at a regular interval to keep issue data up-to-date.",
+      )
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.autoRefreshEnabled).onChange(async (v) => {
+          this.plugin.settings.autoRefreshEnabled = v;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Refresh interval (minutes)")
+      .setDesc("How often to automatically refresh all stub files (minimum 1 minute).")
+      .addText((t) =>
+        t
+          .setPlaceholder("60")
+          .setValue(String(this.plugin.settings.autoRefreshIntervalMinutes))
+          .onChange(async (v) => {
+            const n = parseInt(v, 10);
+            if (Number.isFinite(n) && n >= 1) {
+              this.plugin.settings.autoRefreshIntervalMinutes = n;
+              await this.plugin.saveSettings();
+            }
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Refresh on startup")
+      .setDesc("Automatically refresh all stub files when Obsidian starts.")
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.autoRefreshOnStartup).onChange(async (v) => {
+          this.plugin.settings.autoRefreshOnStartup = v;
+          await this.plugin.saveSettings();
+        }),
       );
   }
 }
