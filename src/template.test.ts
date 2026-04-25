@@ -1,11 +1,17 @@
 import { describe, it, expect } from "vitest";
 import { renderTemplate, IssueFields, escapeLinkText, escapeLinkUrl } from "./template";
+import type { IssueDetails } from "./jira-fields";
 
-const fields: IssueFields = {
+const fields: IssueDetails = {
   key: "ABC-123",
   summary: "Fix login",
   status: "In Progress",
   type: "Bug",
+  priority: "High",
+  assignee: "John Doe",
+  reporter: "Jane Smith",
+  labels: ["backend", "authentication"],
+  updated: "2024-01-15T10:30:00.000Z",
   url: "https://jira.me.com/browse/ABC-123",
 };
 
@@ -37,6 +43,43 @@ describe("renderTemplate", () => {
 
   it("handles an empty template", () => {
     expect(renderTemplate("", fields)).toBe("");
+  });
+
+  it("supports new IssueDetails tokens: priority, assignee, reporter, updated", () => {
+    expect(renderTemplate("{priority}/{assignee}", fields)).toBe(
+      "High/John Doe",
+    );
+    expect(renderTemplate("Reporter: {reporter}", fields)).toBe(
+      "Reporter: Jane Smith",
+    );
+    expect(renderTemplate("Updated: {updated}", fields)).toBe(
+      "Updated: 2024-01-15T10:30:00.000Z",
+    );
+  });
+
+  it("renders labels array as comma-separated string", () => {
+    expect(renderTemplate("{key} - {labels}", fields)).toBe(
+      "ABC-123 - backend, authentication",
+    );
+  });
+
+  it("renders empty labels array as empty string", () => {
+    const noLabels = { ...fields, labels: [] };
+    expect(renderTemplate("{key} - {labels}", noLabels)).toBe(
+      "ABC-123 - ",
+    );
+  });
+
+  it("renders null optional fields as empty string", () => {
+    const nullFields: IssueDetails = {
+      ...fields,
+      priority: null,
+      assignee: null,
+      reporter: null,
+    };
+    expect(renderTemplate("[{priority}] {assignee} / {reporter}", nullFields)).toBe(
+      "[]  / ",
+    );
   });
 });
 
