@@ -9,6 +9,7 @@ import {
 import { createSecretStore, SecretStore } from "./secret-store";
 import type { HttpRequest, Issue } from "./jira-client";
 import { createJiraClient, JiraError, JiraClient } from "./jira-client";
+import type { IssueDetails } from "./jira-fields";
 import { renderTemplate, escapeLinkText, escapeLinkUrl } from "./template";
 import { IssueSuggestModal } from "./issue-suggest-modal";
 import {
@@ -43,6 +44,26 @@ import {
 } from "./jira-key";
 import { CommentIssueSuggestModal } from "./comment-issue-modal";
 import type { Editor } from "obsidian";
+
+/**
+ * Escape IssueDetails fields for safe use in renderTemplate.
+ * Applies escapeLinkText to all string/null fields and labels array,
+ * and escapeLinkUrl to the url field.
+ */
+function escapeIssueDetailsForTemplate(issue: IssueDetails): IssueDetails {
+  return {
+    key: escapeLinkText(issue.key),
+    summary: escapeLinkText(issue.summary),
+    status: escapeLinkText(issue.status),
+    type: escapeLinkText(issue.type),
+    priority: issue.priority ? escapeLinkText(issue.priority) : null,
+    assignee: issue.assignee ? escapeLinkText(issue.assignee) : null,
+    reporter: issue.reporter ? escapeLinkText(issue.reporter) : null,
+    labels: issue.labels.map(escapeLinkText),
+    updated: escapeLinkText(issue.updated),
+    url: escapeLinkUrl(issue.url),
+  };
+}
 
 const obsidianRequest: HttpRequest = async ({ url, headers, method, body }) => {
   const r = await requestUrl({ url, headers, method: method ?? "GET", body: body ?? undefined, throw: false });
@@ -237,15 +258,11 @@ export default class JiraBasesPlugin extends Plugin {
     if (uniqueKeys.length === 0) return;
 
     const client = this.makeClient();
-    const fetched = new Map<string, { summary: string; status: string; type: string }>();
+    const fetched = new Map<string, IssueDetails>();
     for (const key of uniqueKeys) {
-      const r = await client.getIssue(key);
+      const r = await client.getIssueDetails(key);
       if (r.ok) {
-        fetched.set(key, {
-          summary: r.value.summary,
-          status: r.value.status,
-          type: r.value.type,
-        });
+        fetched.set(key, r.value);
       } else {
         this.autoLookupFailed.add(key);
       }
@@ -269,14 +286,7 @@ export default class JiraBasesPlugin extends Plugin {
     );
     for (const hit of freshHits) {
       const issue = fetched.get(hit.key)!;
-      const url = escapeLinkUrl(`${baseStripped}/browse/${hit.key}`);
-      const replacement = renderTemplate(template, {
-        key: escapeLinkText(hit.key),
-        summary: escapeLinkText(issue.summary),
-        status: escapeLinkText(issue.status),
-        type: escapeLinkText(issue.type),
-        url,
-      });
+      const replacement = renderTemplate(template, escapeIssueDetailsForTemplate(issue));
       editor.replaceRange(
         replacement,
         { line: hit.lineStart, ch: hit.start },
@@ -437,20 +447,13 @@ export default class JiraBasesPlugin extends Plugin {
           findKeyInText(parsed.text))
         : null;
       if (parsed && linkKey) {
-        const url = escapeLinkUrl(`${baseStripped}/browse/${linkKey}`);
-        const r = await client.getIssue(linkKey);
+        const r = await client.getIssueDetails(linkKey);
         if (!r.ok) {
           new Notice(errorMessage(r.error));
           return;
         }
         editor.replaceSelection(
-          renderTemplate(this.settings.linkTemplate, {
-            key: escapeLinkText(r.value.key),
-            summary: escapeLinkText(r.value.summary),
-            status: escapeLinkText(r.value.status),
-            type: escapeLinkText(r.value.type),
-            url,
-          }),
+          renderTemplate(this.settings.linkTemplate, escapeIssueDetailsForTemplate(r.value)),
         );
         return;
       }
@@ -465,19 +468,13 @@ export default class JiraBasesPlugin extends Plugin {
     if (detectedKey && selection) {
       const url = escapeLinkUrl(`${baseStripped}/browse/${detectedKey}`);
       if (selection.trim() === detectedKey) {
-        const r = await client.getIssue(detectedKey);
+        const r = await client.getIssueDetails(detectedKey);
         if (!r.ok) {
           new Notice(errorMessage(r.error));
           return;
         }
         editor.replaceSelection(
-          renderTemplate(this.settings.linkTemplate, {
-            key: escapeLinkText(r.value.key),
-            summary: escapeLinkText(r.value.summary),
-            status: escapeLinkText(r.value.status),
-            type: escapeLinkText(r.value.type),
-            url,
-          }),
+          renderTemplate(this.settings.linkTemplate, escapeIssueDetailsForTemplate(r.value)),
         );
       } else {
         editor.replaceSelection(`[${escapeLinkText(selection)}](${url})`);

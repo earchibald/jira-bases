@@ -1,3 +1,5 @@
+import type { IssueDetails } from "./jira-fields";
+
 export interface IssueFields {
   key: string;
   summary: string;
@@ -6,18 +8,34 @@ export interface IssueFields {
   url: string;
 }
 
-const KNOWN_TOKENS: ReadonlyArray<keyof IssueFields> = [
+const KNOWN_TOKENS: ReadonlyArray<keyof IssueDetails> = [
   "key",
   "summary",
   "status",
   "type",
+  "priority",
+  "assignee",
+  "reporter",
+  "labels",
+  "updated",
   "url",
 ];
 
-export function renderTemplate(template: string, fields: IssueFields): string {
+export function renderTemplate(
+  template: string,
+  fields: IssueFields | IssueDetails,
+): string {
   return template.replace(/\{([a-zA-Z]+)\}/g, (match, name: string) => {
     if ((KNOWN_TOKENS as readonly string[]).includes(name)) {
-      return fields[name as keyof IssueFields] ?? "";
+      const key = name as keyof IssueDetails;
+      if (!(key in fields)) {
+        return "";
+      }
+      const value = (fields as IssueDetails)[key];
+      if (Array.isArray(value)) {
+        return value.join(", ");
+      }
+      return value ?? "";
     }
     return match;
   });
