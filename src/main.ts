@@ -45,6 +45,8 @@ import {
 import { CommentIssueSuggestModal } from "./comment-issue-modal";
 import { createFailedKeysTracker, FailedKeysTracker } from "./failed-keys-tracker";
 import type { Editor } from "obsidian";
+import { generateBase } from "./base-generator";
+import { BaseGeneratorModal } from "./base-generator-modal";
 
 /**
  * Escape IssueDetails fields for safe use in renderTemplate.
@@ -220,6 +222,12 @@ export default class JiraBasesPlugin extends Plugin {
       id: "add-comment",
       name: "JIRA: Add comment to issue…",
       editorCallback: (editor) => this.addCommentToIssue(editor),
+    });
+
+    this.addCommand({
+      id: "generate-bases-view",
+      name: "JIRA: Generate Bases view",
+      callback: () => this.generateBasesView(),
     });
   }
 
@@ -655,6 +663,29 @@ export default class JiraBasesPlugin extends Plugin {
         new Notice(`Deleted ${deleted} orphaned stubs${failed ? ` (${failed} failed)` : ""}.`);
       },
     ).open();
+  }
+
+  async generateBasesView(): Promise<void> {
+    const modal = new BaseGeneratorModal(this.app, async (columns: string[]) => {
+      if (columns.length === 0) {
+        new Notice("Select at least one column.");
+        return;
+      }
+      const baseContent = generateBase({
+        columns,
+        stubsFolder: this.settings.stubsFolder,
+      });
+      const vault = this.makeVaultAdapter();
+      const stubsFolder = this.settings.stubsFolder.replace(/\/+$/, "");
+      const baseFilePath = `${stubsFolder}/JIRA Issues.base`;
+      try {
+        await vault.write(baseFilePath, baseContent);
+        new Notice(`Bases view created at ${baseFilePath}`);
+      } catch (e) {
+        new Notice(`Failed to create view: ${(e as Error).message}`);
+      }
+    });
+    modal.open();
   }
 }
 
