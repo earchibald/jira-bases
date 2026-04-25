@@ -32,9 +32,47 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 
 export class JiraBasesSettingTab extends PluginSettingTab {
   private pendingToken = "";
+  private urlValidationEl: HTMLElement | null = null;
 
   constructor(app: App, private plugin: JiraBasesPlugin) {
     super(app, plugin);
+  }
+
+  private validateUrl(url: string): { valid: boolean; message: string; fixed?: string } {
+    const trimmed = url.trim();
+
+    if (!trimmed) {
+      return { valid: false, message: "URL is required" };
+    }
+
+    // Check if protocol is missing
+    if (!trimmed.match(/^https?:\/\//i)) {
+      return {
+        valid: false,
+        message: "⚠️ Missing protocol. Auto-fixed to use https://",
+        fixed: `https://${trimmed.replace(/^\/+/, "")}`,
+      };
+    }
+
+    // Check for trailing slash
+    if (trimmed.endsWith("/")) {
+      return {
+        valid: false,
+        message: "⚠️ Trailing slash detected. Auto-fixed.",
+        fixed: trimmed.replace(/\/+$/, ""),
+      };
+    }
+
+    // Basic URL validation
+    try {
+      const urlObj = new URL(trimmed);
+      if (!urlObj.hostname) {
+        return { valid: false, message: "❌ Invalid URL: missing hostname" };
+      }
+      return { valid: true, message: "✓ Valid URL" };
+    } catch {
+      return { valid: false, message: "❌ Invalid URL format" };
+    }
   }
 
   display(): void {
@@ -43,22 +81,65 @@ export class JiraBasesSettingTab extends PluginSettingTab {
 
     containerEl.createEl("h2", { text: "JIRA Bases" });
 
-    new Setting(containerEl)
+    const urlSetting = new Setting(containerEl)
       .setName("JIRA base URL")
-      .setDesc("e.g. https://jira.me.com (no trailing slash required)")
-      .addText((text) =>
-        text
-          .setPlaceholder("https://jira.example.com")
-          .setValue(this.plugin.settings.baseUrl)
-          .onChange(async (value) => {
+      .setDesc("e.g. https://jira.me.com (no trailing slash required)");
+
+    this.urlValidationEl = urlSetting.descEl;
+
+    urlSetting.addText((text) =>
+      text
+        .setPlaceholder("https://jira.example.com")
+        .setValue(this.plugin.settings.baseUrl)
+        .onChange(async (value) => {
+          const validation = this.validateUrl(value);
+
+          // Auto-apply fix if available
+          if (validation.fixed) {
+            this.plugin.settings.baseUrl = validation.fixed;
+            text.setValue(validation.fixed);
+          } else {
             this.plugin.settings.baseUrl = value.trim();
-            await this.plugin.saveSettings();
-          }),
-      );
+          }
+
+          await this.plugin.saveSettings();
+
+          // Update validation message
+          if (this.urlValidationEl) {
+            this.urlValidationEl.empty();
+            this.urlValidationEl.createEl("div", {
+              text: validation.message,
+              cls: validation.valid ? "setting-item-description" : "setting-item-description mod-warning",
+            });
+          }
+
+          // Refresh the token section if URL changed
+          this.display();
+        }),
+    );
+
+    // Show initial validation state if URL exists
+    if (this.plugin.settings.baseUrl) {
+      const validation = this.validateUrl(this.plugin.settings.baseUrl);
+      if (this.urlValidationEl) {
+        this.urlValidationEl.empty();
+        this.urlValidationEl.createEl("div", {
+          text: validation.message,
+          cls: validation.valid ? "setting-item-description" : "setting-item-description mod-warning",
+        });
+      }
+    }
+
+    // Check if a token is already saved for the current base URL
+    const hasToken = this.plugin.settings.baseUrl &&
+      this.plugin.settings.encryptedTokens[this.plugin.settings.baseUrl];
+    const tokenDesc = hasToken
+      ? "✓ Token saved. Stored in your operating system's keychain, not in your vault."
+      : "Stored in your operating system's keychain, not in your vault.";
 
     new Setting(containerEl)
       .setName("Personal Access Token")
-      .setDesc("Stored in your operating system's keychain, not in your vault.")
+      .setDesc(tokenDesc)
       .addText((text) => {
         text.inputEl.type = "password";
         text
@@ -100,6 +181,7 @@ export class JiraBasesSettingTab extends PluginSettingTab {
           }
           await this.plugin.secrets.delete(url);
           new Notice("Token cleared.");
+          this.display();
         }),
       );
 
