@@ -51,6 +51,7 @@ function renderOk(el: HTMLElement, issue: IssueDetails, ctx: RenderCtx): void {
   metaItem(meta, "Priority", issue.priority ?? "—");
   metaItem(meta, "Assignee", issue.assignee ?? "Unassigned");
   metaItem(meta, "Reporter", issue.reporter ?? "—");
+  metaItem(meta, "Labels", issue.labels.length > 0 ? issue.labels.join(", ") : "—");
 }
 
 function metaItem(parent: HTMLElement, label: string, value: string): void {
