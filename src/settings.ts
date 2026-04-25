@@ -13,6 +13,8 @@ export interface PluginSettings {
   autoLookupIdleMs: number;
   autoLookupMode: AutoLookupMode;
   autoLookupTemplate: string;
+  autoLookupFailedKeysTTLMs: number;
+  autoLookupFailedKeysMaxSize: number;
 }
 
 export const DEFAULT_LINK_TEMPLATE = "[{key} {summary}]({url})";
@@ -28,6 +30,8 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   autoLookupIdleMs: 2000,
   autoLookupMode: "minimal",
   autoLookupTemplate: MINIMAL_LINK_TEMPLATE,
+  autoLookupFailedKeysTTLMs: 300000,
+  autoLookupFailedKeysMaxSize: 100,
 };
 
 export class JiraBasesSettingTab extends PluginSettingTab {
