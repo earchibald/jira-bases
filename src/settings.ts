@@ -56,9 +56,16 @@ export class JiraBasesSettingTab extends PluginSettingTab {
           }),
       );
 
+    // Check if a token is already saved for the current base URL
+    const hasToken = this.plugin.settings.baseUrl &&
+      this.plugin.settings.encryptedTokens[this.plugin.settings.baseUrl];
+    const tokenDesc = hasToken
+      ? "✓ Token saved. Stored in your operating system's keychain, not in your vault."
+      : "Stored in your operating system's keychain, not in your vault.";
+
     new Setting(containerEl)
       .setName("Personal Access Token")
-      .setDesc("Stored in your operating system's keychain, not in your vault.")
+      .setDesc(tokenDesc)
       .addText((text) => {
         text.inputEl.type = "password";
         text
@@ -100,6 +107,7 @@ export class JiraBasesSettingTab extends PluginSettingTab {
           }
           await this.plugin.secrets.delete(url);
           new Notice("Token cleared.");
+          this.display();
         }),
       );
 
