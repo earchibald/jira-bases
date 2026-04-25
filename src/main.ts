@@ -42,6 +42,7 @@ import {
   parseMarkdownLink,
 } from "./jira-key";
 import { CommentIssueSuggestModal } from "./comment-issue-modal";
+import { createFailedKeysTracker, FailedKeysTracker } from "./failed-keys-tracker";
 import type { Editor } from "obsidian";
 
 const obsidianRequest: HttpRequest = async ({ url, headers, method, body }) => {
@@ -79,7 +80,7 @@ export default class JiraBasesPlugin extends Plugin {
   private issueCache = createIssueCache();
   private issueService!: IssueService;
   private autoLookupScheduler: ReturnType<typeof createIdleScheduler> | null = null;
-  private autoLookupFailed = new Set<string>();
+  private autoLookupFailed!: FailedKeysTracker;
   private autoLookupPendingEditor: Editor | null = null;
 
   async onload() {
@@ -91,6 +92,10 @@ export default class JiraBasesPlugin extends Plugin {
         this.settings.encryptedTokens = tokens;
         await this.saveSettings();
       },
+    });
+    this.autoLookupFailed = createFailedKeysTracker({
+      ttlMs: this.settings.autoLookupFailedKeysTTLMs,
+      maxSize: this.settings.autoLookupFailedKeysMaxSize,
     });
     this.addSettingTab(new JiraBasesSettingTab(this.app, this));
 
