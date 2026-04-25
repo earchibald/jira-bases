@@ -1,3 +1,5 @@
+import type { IssueDetails } from "./jira-fields";
+
 export interface IssueFields {
   key: string;
   summary: string;
@@ -14,7 +16,10 @@ const KNOWN_TOKENS: ReadonlyArray<keyof IssueFields> = [
   "url",
 ];
 
-export function renderTemplate(template: string, fields: IssueFields): string {
+export function renderTemplate(
+  template: string,
+  fields: IssueFields | IssueDetails,
+): string {
   return template.replace(/\{([a-zA-Z]+)\}/g, (match, name: string) => {
     if ((KNOWN_TOKENS as readonly string[]).includes(name)) {
       return fields[name as keyof IssueFields] ?? "";
