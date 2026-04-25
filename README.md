@@ -74,7 +74,7 @@ views:
 
 ### Non-goals (still)
 
-No writing back to JIRA, no scheduled refresh, no starter `.base` files, no mobile.
+No writing back to JIRA, no scheduled refresh, no mobile.
 
 ## v0.4 — Issue lookup & preview
 
@@ -82,3 +82,38 @@ No writing back to JIRA, no scheduled refresh, no starter `.base` files, no mobi
 - **JIRA: Look up issue…** — command-palette modal that accepts a key (`ABC-123`) or a browse URL and renders the same preview.
 
 The preview uses the same JIRA client as the rest of the plugin — no extra config.
+
+## v0.5 — Starter .base file generator
+
+Instantly create a pre-configured Obsidian Bases view for your JIRA issues — no manual setup required.
+
+### How it works
+
+- **JIRA: Generate Bases view** — opens a modal where you select which columns to include (key, summary, status, type, priority, assignee, reporter, labels, updated, url). Click "Generate" and the plugin creates a ready-to-use `.base` file in your stubs folder.
+- The generated file is named `JIRA Issues.base` and lives in your configured stubs folder (default `JIRA/`).
+- Open the `.base` file with Obsidian Bases and you'll see a sortable, filterable table of all your JIRA issue stubs.
+
+### Column customization
+
+Default columns: key, summary, status, type, priority, assignee. Uncheck any you don't need, or add reporter, labels, updated, or url.
+
+### Example output
+
+```yaml
+filters:
+  and:
+    - file.inFolder("JIRA")
+views:
+  - type: table
+    name: "All issues"
+    order:
+      - file.name
+      - jira_key
+      - jira_summary
+      - jira_status
+      - jira_type
+      - jira_priority
+      - jira_assignee
+```
+
+Run "JIRA: Sync issue stubs" first to populate your stubs folder, then generate the view. The table updates automatically as you sync new issues.
