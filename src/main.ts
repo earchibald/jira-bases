@@ -308,6 +308,9 @@ export default class JiraBasesPlugin extends Plugin {
     const intervalMs = this.settings.autoRefreshIntervalMinutes * 60 * 1000;
     this.autoRefreshIntervalId = this.registerInterval(
       window.setInterval(() => {
+        if (document.hidden) {
+          return;
+        }
         void this.syncIssueStubs();
       }, intervalMs),
     );
