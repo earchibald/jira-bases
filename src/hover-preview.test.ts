@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { Plugin } from "obsidian";
 import { registerHoverPreview } from "./hover-preview";
-import type { IssueService, IssueState } from "./issue-service";
+import type { IssueService, LookupResult } from "./issue-service";
 
 const BASE_URL = "https://jira.example.com";
 
@@ -22,7 +22,7 @@ function createMockPlugin(): Plugin {
 
 function createMockService(): IssueService {
   return {
-    lookup: vi.fn((key: string, cb: (state: IssueState) => void) => {
+    lookup: vi.fn((key: string, cb: (state: LookupResult) => void) => {
       cb({
         state: "ok",
         issue: {
@@ -91,7 +91,7 @@ describe("hover-preview boundary detection", () => {
   let container: HTMLElement;
   let plugin: Plugin;
   let service: IssueService;
-  let appendChildSpy: ReturnType<typeof vi.spyOn>;
+  let appendChildSpy: any;
 
   beforeEach(() => {
     document.body.innerHTML = "";
