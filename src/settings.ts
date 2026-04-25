@@ -248,5 +248,41 @@ export class JiraBasesSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           }),
       );
+
+    new Setting(containerEl)
+      .setName("Failed keys cache TTL (ms)")
+      .setDesc(
+        "How long to remember failed JIRA key lookups before retrying. Prevents repeated API calls for invalid keys.",
+      )
+      .addText((t) =>
+        t
+          .setPlaceholder("300000")
+          .setValue(String(this.plugin.settings.autoLookupFailedKeysTTLMs))
+          .onChange(async (v) => {
+            const n = parseInt(v, 10);
+            if (Number.isFinite(n) && n >= 0 && n <= 3600000) {
+              this.plugin.settings.autoLookupFailedKeysTTLMs = n;
+              await this.plugin.saveSettings();
+            }
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Failed keys max cache size")
+      .setDesc(
+        "Maximum number of failed JIRA keys to remember. Older entries are evicted when this limit is reached.",
+      )
+      .addText((t) =>
+        t
+          .setPlaceholder("100")
+          .setValue(String(this.plugin.settings.autoLookupFailedKeysMaxSize))
+          .onChange(async (v) => {
+            const n = parseInt(v, 10);
+            if (Number.isFinite(n) && n >= 1 && n <= 1000) {
+              this.plugin.settings.autoLookupFailedKeysMaxSize = n;
+              await this.plugin.saveSettings();
+            }
+          }),
+      );
   }
 }
