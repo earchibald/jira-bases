@@ -9,6 +9,7 @@ import {
 import { createSecretStore, SecretStore } from "./secret-store";
 import type { HttpRequest, Issue } from "./jira-client";
 import { createJiraClient, JiraError, JiraClient } from "./jira-client";
+import type { IssueDetails } from "./jira-fields";
 import { renderTemplate, escapeLinkText, escapeLinkUrl } from "./template";
 import { IssueSuggestModal } from "./issue-suggest-modal";
 import {
@@ -237,15 +238,11 @@ export default class JiraBasesPlugin extends Plugin {
     if (uniqueKeys.length === 0) return;
 
     const client = this.makeClient();
-    const fetched = new Map<string, { summary: string; status: string; type: string }>();
+    const fetched = new Map<string, IssueDetails>();
     for (const key of uniqueKeys) {
-      const r = await client.getIssue(key);
+      const r = await client.getIssueDetails(key);
       if (r.ok) {
-        fetched.set(key, {
-          summary: r.value.summary,
-          status: r.value.status,
-          type: r.value.type,
-        });
+        fetched.set(key, r.value);
       } else {
         this.autoLookupFailed.add(key);
       }
