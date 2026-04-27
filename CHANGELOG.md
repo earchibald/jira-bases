@@ -2,6 +2,14 @@
 
 All notable changes to **JIRA Bases** are recorded here. Releases follow [semver](https://semver.org/) and are auto-published to GitHub Releases when `manifest.json` / `package.json` versions change on `main`.
 
+## 0.10.0 — Command palette additions (JB-10)
+
+- **Three new palette commands**, all sharing one cursor-aware key resolver (selection → cursor → active note's `jira_key` frontmatter):
+  - **JIRA: Open issue in browser** — resolves the current key and opens `<base>/browse/<KEY>` in the default browser.
+  - **JIRA: Copy issue URL** — same resolution; copies `<base>/browse/<KEY>` to the clipboard.
+  - **JIRA: Refresh this stub** — when the active note has a `jira_key` frontmatter field, re-fetches from JIRA and rewrites the managed `jira_*` frontmatter in place. Notice no-op otherwise.
+- **Palette grouping pass.** The `JIRA: …` commands are now registered in `onload()` grouped by intent (connection · single-issue actions · stub maintenance · sync · view generation) so future readers can map them back to UI flows.
+
 ## 0.9.0 — Settings polish and plugin lifecycle hygiene (JB-8)
 
 - **Settings copy.** Each section now has a paragraph-level intro instead of just a heading. The PAT row's storage description matches reality — encrypted at rest using Electron `safeStorage` with the ciphertext written to this vault's plugin-data file (the OS keychain holds only the derived key, not the token itself).
