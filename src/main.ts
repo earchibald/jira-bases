@@ -111,6 +111,8 @@ export default class JiraBasesPlugin extends Plugin {
   private statusBarItem: HTMLElement | null = null;
   private lastSyncTimestamp: number | null = null;
   private lastSyncSummary: SyncSummary | null = null;
+  private lastSyncSummaryRunId: number = 0;
+  private nextSyncRunId: number = 1;
   private statusBarUpdateIntervalId: number | null = null;
 
   recreateFailedKeysTracker(): void {
@@ -736,6 +738,7 @@ export default class JiraBasesPlugin extends Plugin {
   }
 
   private async syncKeys(keys: string[], scopeLabel: string): Promise<void> {
+    const runId = this.nextSyncRunId++;
     const deps = this.makeIndexerDeps();
     const vault = this.makeVaultAdapter();
     const client = this.makeClient();
@@ -764,9 +767,14 @@ export default class JiraBasesPlugin extends Plugin {
       }
     }
     const timestamp = Date.now();
-    this.lastSyncTimestamp = timestamp;
-    this.lastSyncSummary = { scope: scopeLabel, synced, failures, timestamp };
-    this.updateStatusBar();
+    const summary: SyncSummary = { scope: scopeLabel, synced, failures, timestamp };
+    // Only update the stored summary if this is the latest run.
+    if (runId > this.lastSyncSummaryRunId) {
+      this.lastSyncTimestamp = timestamp;
+      this.lastSyncSummary = summary;
+      this.lastSyncSummaryRunId = runId;
+      this.updateStatusBar();
+    }
 
     if (failures.length === 0) {
       new Notice(`Synced ${synced} stubs.`);
@@ -776,11 +784,13 @@ export default class JiraBasesPlugin extends Plugin {
       `Synced ${synced} stubs (${failures.length} failed). Click for details.`,
       10000,
     );
-    notice.messageEl.addEventListener("click", () => {
-      if (this.lastSyncSummary) {
-        new SyncFailuresModal(this.app, this.lastSyncSummary).open();
-      }
-    });
+    // Close over the local summary, not this.lastSyncSummary, so the click shows the right result.
+    const messageEl = (notice as any).messageEl ?? (notice as any).noticeEl;
+    if (messageEl) {
+      messageEl.addEventListener("click", () => {
+        new SyncFailuresModal(this.app, summary).open();
+      });
+    }
   }
 
   async cleanOrphanedStubs(): Promise<void> {

@@ -1,8 +1,17 @@
 import { App, Modal, Setting } from "obsidian";
 
+export type SyncFailureKind =
+  | "no-token"
+  | "auth"
+  | "not-found"
+  | "network"
+  | "http"
+  | "parse"
+  | "write";
+
 export interface SyncFailure {
   key: string;
-  kind: string;
+  kind: SyncFailureKind;
   message: string;
 }
 
