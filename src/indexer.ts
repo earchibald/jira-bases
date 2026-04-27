@@ -17,8 +17,12 @@ export async function collectAllKeys(
 ): Promise<Set<string>> {
   const { baseUrl, prefixes } = deps.getSettings();
   const keys = new Set<string>();
+  // Fast path: nothing can ever match when both sources of key patterns are absent.
+  const normalizedBase = baseUrl.replace(/\/+$/, "");
+  const validPrefixes = prefixes.filter((p) => /^[A-Z][A-Z0-9]+$/.test(p));
+  if (normalizedBase.length === 0 && validPrefixes.length === 0) return keys;
   const notes = await deps.listNotes();
-  const prefix = stubsFolder.replace(/\/+$/, "") + "/";
+  const prefix = stubsFolder.replace(/^\/+|\/+$/, "") + "/";
   for (const path of notes) {
     if (path.startsWith(prefix)) continue;
     const content = await deps.read(path);
@@ -34,7 +38,7 @@ export async function listStubPaths(
   stubsFolder: string,
 ): Promise<Map<string, string>> {
   const map = new Map<string, string>();
-  const prefix = stubsFolder.replace(/\/+$/, "") + "/";
+  const prefix = stubsFolder.replace(/^\/+|\/+$/, "") + "/";
   const notes = await deps.listNotes();
   for (const path of notes) {
     if (!path.startsWith(prefix)) continue;

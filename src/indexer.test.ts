@@ -70,6 +70,26 @@ describe("collectAllKeys", () => {
     const keys = await collectAllKeys(d, "JIRA");
     expect([...keys]).toEqual([]);
   });
+
+  it("returns empty set immediately when neither baseUrl nor prefixes are configured", async () => {
+    const d = deps(
+      { "a.md": "ABC-1 and DEF-2 in the body\n" },
+      { baseUrl: "", prefixes: [], stubsFolder: "JIRA" },
+    );
+    const keys = await collectAllKeys(d, "JIRA");
+    expect([...keys]).toEqual([]);
+  });
+
+  it("normalises leading slashes on stubsFolder so stubs are still excluded", async () => {
+    const d = deps({
+      "user.md": "body [t](https://jira.me.com/browse/ABC-1)\n",
+      "JIRA/ABC-1 stub.md":
+        "body [t](https://jira.me.com/browse/ABC-1)\n",
+    });
+    // Leading slash should be stripped; stub must still be excluded.
+    const keys = await collectAllKeys(d, "/JIRA");
+    expect([...keys]).toEqual(["ABC-1"]);
+  });
 });
 
 describe("findOrphanedStubs", () => {
