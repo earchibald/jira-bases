@@ -227,6 +227,13 @@ export class JiraBasesSettingTab extends PluginSettingTab {
   }
 
   display(): void {
+    // Cancel any pending URL validation timer before rebuilding the tab,
+    // since display() will create a new text element and the old timer
+    // would reference a now-detached element.
+    if (this.urlValidationTimer !== null) {
+      clearTimeout(this.urlValidationTimer);
+      this.urlValidationTimer = null;
+    }
     const { containerEl } = this;
     containerEl.empty();
 
