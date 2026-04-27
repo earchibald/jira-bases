@@ -1,119 +1,124 @@
-# jira-bases
+# JIRA Bases
 
-## Summary
-There are other Obsidian plugins for JIRA. Some do link helper work. Others give read summaries of issues. Still others are kitchen-sink approaches with full read/write and sychronization with JIRA issues.
+An Obsidian plugin that turns your JIRA issues into first-class Bases data — smart link insertion, per-issue stub notes synced from JIRA, and hover/lookup previews. **JIRA Data Center only, desktop only, Personal Access Token (PAT) auth only.** No JIRA Cloud, no OAuth, no mobile, no telemetry. See [Non-goals](#non-goals) for the full list.
 
-None of them do quite what I want, which is:
+> Looking for older changes? See [`CHANGELOG.md`](./CHANGELOG.md).
 
-- Simplify including JIRA links. Currently I am in the habit of manually copying the JIRA Issue ID and the Summary, then grabbing the URL and making it all into a link: like so [ABC-123 A Sample Issue](https://jira.me.com/browse/ABC-123)
-	- I would like for this to be configurable. Some people would just want the issue ID as the anchor text, or some other field order or combination. Sometimes we would like the short representation (just ID), in other places the long link with summary (or as otherwise configured. Maybe people want issue status.
-	- This (among other functionality) will require user authentication in order to be smart about searching for and inserting data.
-- Handle dynamic configuration of note metadata for use with Obsidian Bases.
-- Handle lookup of issue information (all readonly!)
-- Auth: We can allow JIRA PAT but I would *prefer* to use human-in-the-middle OAuth for this where available (as in my case)
-- Combining the metadata, bases and plugin capabilities we should be able to design bases with rich information from JIRA
+## Overview
 
-## Non-goals
+JIRA Bases keeps a folder of read-only **stub notes** in your vault — one note per JIRA issue you reference — with managed frontmatter (`jira_status`, `jira_priority`, `jira_assignee`, …). Pair it with [Obsidian Bases](https://help.obsidian.md/bases) and you get a sortable, filterable table of your JIRA issues that lives entirely in your vault. The plugin also inserts smart links, previews issues on hover, and (optionally) replaces bare issue keys you type with proper links.
 
-To keep scope tight, this plugin explicitly **does not** support:
+Three flows you'll use most:
 
-- **JIRA Cloud.** Targets JIRA Data Center only. The Cloud REST API surface, auth flows, and pagination semantics differ; supporting both would double maintenance and dilute the Data Center experience.
-- **OAuth.** Personal Access Token (PAT) only. No 3LO, no device flow, no SSO bridging.
-- **Mobile.** Desktop-only (`isDesktopOnly: true`). Token storage relies on Electron `safeStorage`, which has no mobile equivalent.
-- **Multi-account / multi-instance.** One JIRA base URL + token per vault.
-- **Live Preview decorations beyond hover preview.** No inline status pills, no in-editor issue summaries, no CodeMirror widgets — hover-only.
-- **Telemetry.** No analytics, no crash reporting, no phone-home.
+1. **Insert a JIRA link** — fuzzy-pick an issue, paste a configurable link template.
+2. **Sync stubs and view them in Bases** — scans your vault for JIRA references, fetches fields, writes one stub per issue, then renders them through a generated `.base` view.
+3. **Hover or look up an issue** — preview summary, status, type, priority, assignee, reporter, and last-updated time without leaving the editor.
 
-## Status
+<!-- TODO: capture docs/screenshots/insert-link.gif — Insert issue link flow -->
+<!-- TODO: capture docs/screenshots/sync-and-base.gif — Sync stubs + Bases view -->
+<!-- TODO: capture docs/screenshots/hover-preview.png — Hover preview popover -->
 
-v0.2: Smart link insertion on top of v0.1 foundation.
+## Quick start
 
-- **JIRA: Insert issue link** — fuzzy-pick an issue (by key or text) and insert a markdown link using a configurable template.
-- **JIRA: Link selection to issue** — wrap the current selection as a link to the chosen issue.
-- **Link template setting** — customise the inserted text with the tokens `{key}`, `{summary}`, `{status}`, `{type}`, `{url}`. Default: `[{key} {summary}]({url})`. Unknown tokens are left as-is.
+### 1. Install (dev / from source)
 
-## Install (dev)
+```bash
+git clone https://github.com/earchibald/jira-bases.git
+cd jira-bases
+npm install && npm run build
+```
 
-1. `npm install && npm run build`
-2. Symlink `main.js` and `manifest.json` into `<vault>/.obsidian/plugins/jira-bases/`
-3. Enable "JIRA Bases" under Community plugins.
+Symlink the build into your vault:
 
-## Configure
+```bash
+ln -s "$PWD/main.js"      <vault>/.obsidian/plugins/jira-bases/main.js
+ln -s "$PWD/manifest.json" <vault>/.obsidian/plugins/jira-bases/manifest.json
+```
 
-- **JIRA base URL:** e.g. `https://jira.example.com`
-- **PAT:** create one in your JIRA profile → Personal Access Tokens. Paste into settings and click "Save token". Stored in your OS keychain.
+Then enable **JIRA Bases** under *Settings → Community plugins*.
 
-## Verify
+### 2. Connect to JIRA
 
-Run the "JIRA: Test connection" command (or the Test button in settings). You should see "Connected as \<your name\>".
+In *Settings → JIRA Bases*:
 
-## Scope
+1. **JIRA base URL** — e.g. `https://jira.example.com` (no trailing slash; `https://` is auto-added if you forget).
+2. **Personal Access Token** — generate one in your JIRA profile → *Personal Access Tokens*, paste it, click **Save token**. The token is encrypted at rest (see [How tokens are stored](#how-tokens-are-stored)).
+3. Click **Test** under *Test connection*. You should see `Connected as <your name>`.
 
-Desktop only. PAT only (no OAuth). JIRA Data Center.
+### 3. Insert a JIRA link
 
-## v0.3 — Bases index & issue stubs
+Open the command palette and run **JIRA: Insert issue link**. Type any part of the key or summary, pick the issue, and a markdown link is inserted using your link template.
 
-Lets Obsidian Bases correlate notes and JIRA issues.
+To wrap an existing selection, select the text first, then run **JIRA: Insert issue link** — the suggestion modal will use your selection as the seed search.
 
-### How it works
+### 4. Sync stubs and view them in Bases
 
-- "JIRA: Sync issue stubs" scans every note's body for JIRA references — both `[…](<baseUrl>/browse/KEY)` links and (optionally) bare keys like `ABC-1` for project prefixes you've configured — fetches current fields from JIRA, and maintains one note per issue under your configured stubs folder (default `JIRA/`). Each stub has a managed frontmatter block plus a `## Notes` section you can edit freely — the plugin never touches content below `## Notes`.
-- "JIRA: Clean orphaned stubs" deletes stubs for issues no longer referenced anywhere.
+1. Configure *Project prefixes* in settings (e.g. `ABC, PROJ`) so the scanner recognises bare keys.
+2. Run **JIRA: Sync issue stubs**. The plugin scans every note's body for JIRA references — `[…](<baseUrl>/browse/KEY)` links and bare keys for your configured prefixes — fetches each issue's fields, and writes one stub per issue under your *Stubs folder* (default: `JIRA/`).
+3. Run **JIRA: Generate Bases view** to create `JIRA Issues.base` in the same folder. Open it with Bases for a sortable, filterable table.
 
-### Frontmatter policy
+To remove stubs whose issue is no longer referenced anywhere in the vault, run **JIRA: Clean orphaned stubs**.
 
-The plugin **does not modify the frontmatter of your own notes**. It will not write `jira_issues`, `jira_links`, or any other field to a note you authored — even if the note's body references issues. Only stub notes inside the configured stubs folder have their frontmatter managed by the plugin.
+### 5. Preview an issue
 
-If you want to filter a Bases view by issue references, scan the stubs folder directly (`file.inFolder("JIRA")`) and use the managed `jira_*` fields on each stub. (Notes from earlier plugin versions that already contain `jira_issues:` keep that data — the plugin won't update or remove it.)
+Hover any link to `<your-jira>/browse/<KEY>` (or any link whose visible text starts with a JIRA key in Live Preview) and a popover shows summary, status, type, priority, assignee, reporter, and last-updated time. Cached for 5 minutes; stale entries refresh in the background.
+
+For one-off lookups without inserting a link, run **JIRA: Look up issue…** and paste a key (`ABC-123`) or a browse URL.
+
+## Reference
+
+### Commands
+
+| Command | What it does |
+| :--- | :--- |
+| **JIRA: Test connection** | Calls `/rest/api/2/myself`. Returns the authenticated user. |
+| **JIRA: Insert issue link** | Fuzzy-pick an issue and insert a markdown link using your *Link template*. Works on the current selection too. |
+| **JIRA: Sync issue stubs** | Scans the vault for JIRA references, fetches fields, writes/updates stubs in your *Stubs folder*. |
+| **JIRA: Clean orphaned stubs** | Deletes stub notes whose issue is no longer referenced anywhere in the vault. |
+| **JIRA: Look up issue…** | Modal that accepts a key or browse URL and renders the same preview as hover. |
+| **JIRA: Add comment to issue…** | Pick an issue, write a comment, post it. |
+| **JIRA: Generate Bases view** | Opens a column-picker modal and writes `JIRA Issues.base` to your *Stubs folder*. |
 
 ### Settings
 
-- **Stubs folder** (default `JIRA`) — where issue stubs live.
-- **Project prefixes** (default empty) — comma-separated project prefixes (e.g. `ABC, PROJ`). Required for bare-key matching; link-based matching always works.
+| Setting | Default | Notes |
+| :--- | :--- | :--- |
+| **JIRA base URL** | _(empty)_ | Validated on input; missing protocol is auto-fixed to `https://`. |
+| **Personal Access Token** | _(empty)_ | Encrypted at rest. See [How tokens are stored](#how-tokens-are-stored). |
+| **Link template** | `[{key} {summary}]({url})` | Tokens: `{key}`, `{summary}`, `{status}`, `{type}`, `{url}`. Unknown tokens are left as-is. |
+| **Stubs folder** | `JIRA` | Where stub notes are written, vault-relative. |
+| **Auto-lookup on type** | off | When enabled, bare keys you type (matching configured prefixes) are replaced with a link after an idle pause. |
+| **Auto-lookup link style** | Minimal | `Minimal` = `[KEY](url)`. `Primary` = the *Link template* above. `Custom` = a separate template you control. |
+| **Idle delay (ms)** | `2000` | How long after the last keystroke before queued lookups apply. |
+| **Project prefixes** | _(empty)_ | Comma-separated, e.g. `ABC, PROJ`. Required for bare-key matching; explicit links work without it. |
+| **Failed keys cache TTL / max size** | `600000` ms / `500` | Suppresses repeat API calls for keys that don't resolve. |
+| **Auto-refresh stubs** | off | Periodic re-fetch of all stubs. |
+| **Refresh interval (minutes)** | `60` | Used when auto-refresh is enabled. Minimum 1 minute. |
+| **Refresh on startup** | off | Run a sync when Obsidian launches. |
 
-### Example `.base`
+### Link-template tokens
 
-```yaml
-filters:
-  and:
-    - file.inFolder("JIRA")
-views:
-  - type: table
-    name: "All issues"
-    order:
-      - file.name
-      - jira_status
-      - jira_priority
-      - jira_assignee
-      - jira_updated
-```
+The template is a plain string. The following tokens are substituted:
 
-### Non-goals (still)
+- `{key}` — issue key, e.g. `ABC-123`
+- `{summary}` — issue summary
+- `{status}` — workflow status name
+- `{type}` — issue type (Bug, Story, …)
+- `{url}` — `<baseUrl>/browse/<KEY>`
 
-No writing back to JIRA, no scheduled refresh, no mobile.
+Unknown tokens (e.g. `{keys}` typo) are left in place — the plugin doesn't error, the literal string lands in your note. If your template renders a markdown link, key/summary/status/type are escaped for link-text and the URL is escaped for link-href.
 
-## v0.4 — Issue lookup & preview
+### Stub frontmatter
 
-- **Hover preview** — hover any link to `<your-jira>/browse/<KEY>` (or any link whose visible text starts with a JIRA key in Live Preview) and see issue summary, status, type, priority, assignee, reporter, and last-updated time. Cached for 5 minutes; stale entries refresh in the background.
-- **JIRA: Look up issue…** — command-palette modal that accepts a key (`ABC-123`) or a browse URL and renders the same preview.
+Stub notes inside the *Stubs folder* are managed by the plugin. The body has a `## Notes` section you can freely edit — the plugin never touches anything below `## Notes`. Frontmatter fields written:
 
-The preview uses the same JIRA client as the rest of the plugin — no extra config.
+- `jira_key`, `jira_summary`, `jira_status`, `jira_type`, `jira_priority`
+- `jira_assignee`, `jira_reporter`, `jira_labels`, `jira_updated`
+- `jira_url`
 
-## v0.5 — Starter .base file generator
+**Notes you authored are never modified.** Even if a note's body references a JIRA issue, the plugin will not write `jira_*` fields onto it. To filter a Bases view by issue references, scope the view to the stubs folder (`file.inFolder("JIRA")`).
 
-Instantly create a pre-configured Obsidian Bases view for your JIRA issues — no manual setup required.
-
-### How it works
-
-- **JIRA: Generate Bases view** — opens a modal where you select which columns to include (key, summary, status, type, priority, assignee, reporter, labels, updated, url). Click "Generate" and the plugin creates a ready-to-use `.base` file in your stubs folder.
-- The generated file is named `JIRA Issues.base` and lives in your configured stubs folder (default `JIRA/`).
-- Open the `.base` file with Obsidian Bases and you'll see a sortable, filterable table of all your JIRA issue stubs.
-
-### Column customization
-
-Default columns: key, summary, status, type, priority, assignee. Uncheck any you don't need, or add reporter, labels, updated, or url.
-
-### Example output
+### Example `.base` (filter by stubs folder)
 
 ```yaml
 filters:
@@ -132,4 +137,44 @@ views:
       - jira_assignee
 ```
 
-Run "JIRA: Sync issue stubs" first to populate your stubs folder, then generate the view. The table updates automatically as you sync new issues.
+### How tokens are stored
+
+The PAT is **encrypted at rest using Electron's [`safeStorage`](https://www.electronjs.org/docs/latest/api/safe-storage)**, which derives its key from your operating system's secret-management facility (Keychain on macOS, libsecret on Linux, DPAPI on Windows). The resulting ciphertext is base64-encoded and written into your vault's plugin-data file at:
+
+```
+<vault>/.obsidian/plugins/jira-bases/data.json
+```
+
+The token is **not** stored in your OS keychain directly, and the plaintext token is never written to disk. If you copy your vault to another machine without the same OS-managed key, the encrypted token won't decrypt and you'll be prompted to re-enter your PAT. To remove a saved token, click **Clear token** in settings.
+
+## Troubleshooting
+
+### "Connected as …" doesn't appear when I click Test
+
+- Verify the base URL has no trailing slash and uses the same protocol JIRA serves (almost always `https://`).
+- Confirm the PAT is valid in JIRA → *Personal Access Tokens*. PATs can be revoked or expire — generate a new one and **Save token** again.
+- If you see *OS encryption unavailable*, your Obsidian build can't reach `safeStorage`. Token storage requires desktop Obsidian — mobile is unsupported.
+
+### Stub sync doesn't pick up bare keys (`ABC-123`)
+
+Bare-key matching only fires for prefixes listed under *Project prefixes*. Add `ABC` (uppercase, comma-separated for multiples) and re-run **JIRA: Sync issue stubs**. Explicit `[…](<baseUrl>/browse/KEY)` links are matched without any prefix configuration.
+
+### Hover preview doesn't appear
+
+- The link must point at `<your-jira>/browse/<KEY>`, **or** be a Live Preview link whose visible text starts with a JIRA key. Reading-mode links use the URL match.
+- Hover previews share the issue cache; if a key was queried recently and failed, it's suppressed for the *Failed keys cache TTL* (default 10 minutes). Wait it out, or change the TTL to a smaller value.
+
+### My stub frontmatter looks wrong / I want a field added
+
+The set of `jira_*` fields is fixed — the plugin owns those. Anything below `## Notes` in a stub is yours to edit and won't be overwritten. For non-JIRA fields, add them under `## Notes` (or in a separate sibling note that links to the stub).
+
+## Non-goals
+
+To keep scope tight, this plugin explicitly **does not** support:
+
+- **JIRA Cloud.** Targets JIRA Data Center only. The Cloud REST API surface, auth flows, and pagination semantics differ; supporting both would double maintenance and dilute the Data Center experience.
+- **OAuth.** Personal Access Token (PAT) only. No 3LO, no device flow, no SSO bridging.
+- **Mobile.** Desktop-only (`isDesktopOnly: true`). Token storage relies on Electron `safeStorage`, which has no mobile equivalent.
+- **Multi-account / multi-instance.** One JIRA base URL + token per vault.
+- **Live Preview decorations beyond hover preview.** No inline status pills, no in-editor issue summaries, no CodeMirror widgets — hover-only.
+- **Telemetry.** No analytics, no crash reporting, no phone-home.
