@@ -705,6 +705,12 @@ export default class JiraBasesPlugin extends Plugin {
       new Notice("Active note isn't a JIRA stub.");
       return;
     }
+    const normalizedFolder = this.settings.stubsFolder.replace(/^\/+|\/+$/g, "");
+    const normalizedPath = file.path.startsWith("/") ? file.path.slice(1) : file.path;
+    if (!normalizedPath.startsWith(normalizedFolder + "/") && normalizedPath !== normalizedFolder) {
+      new Notice("Active note isn't in the configured stubs folder.");
+      return;
+    }
     const cache = this.app.metadataCache.getFileCache(file);
     const rawKey = cache?.frontmatter?.jira_key;
     if (typeof rawKey !== "string" || !/^[A-Z][A-Z0-9]+-\d+$/.test(rawKey.trim())) {
@@ -715,6 +721,10 @@ export default class JiraBasesPlugin extends Plugin {
     const r = await this.makeClient().getIssueDetails(key);
     if (!r.ok) {
       new Notice(errorMessage(r.error));
+      return;
+    }
+    if (r.value.key !== key) {
+      new Notice(`Issue key changed: frontmatter has ${key}, but JIRA returned ${r.value.key}. Refresh cancelled to avoid filename mismatch.`);
       return;
     }
     try {

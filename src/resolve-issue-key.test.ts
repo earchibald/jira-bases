@@ -143,4 +143,18 @@ describe("resolveIssueKey", () => {
     });
     expect(r).toBe("ABC-1");
   });
+
+  it("extracts key from selection with foreign-host URL and bare key", () => {
+    const r = resolveIssueKey({
+      editor: fakeEditor({
+        selection: "see https://other.com/browse/XYZ-1 for ABC-1",
+      }),
+      activeFileFrontmatter: null,
+      baseUrl: BASE,
+    });
+    // When selection contains both a non-JIRA URL and a bare key,
+    // findKeyInText returns the first key found (XYZ-1), not the bare one.
+    // This is current behavior and may be surprising but is deterministic.
+    expect(r).toBe("XYZ-1");
+  });
 });
