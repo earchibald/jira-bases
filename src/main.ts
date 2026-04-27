@@ -408,6 +408,11 @@ export default class JiraBasesPlugin extends Plugin {
       }
     }
 
+    const failureCount = this.lastSyncSummary?.failures.length ?? 0;
+    if (failureCount > 0) {
+      parts.push(`${failureCount} failed`);
+    }
+
     this.statusBarItem.setText(parts.join(" | "));
   }
 
