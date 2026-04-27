@@ -104,9 +104,14 @@ The template is a plain string. The following tokens are substituted:
 - `{summary}` — issue summary
 - `{status}` — workflow status name
 - `{type}` — issue type (Bug, Story, …)
+- `{priority}` — priority name (if set)
+- `{assignee}` — assigned user (if set)
+- `{reporter}` — reporter name
+- `{labels}` — comma-separated label list
+- `{updated}` — issue's last-updated timestamp
 - `{url}` — `<baseUrl>/browse/<KEY>`
 
-Unknown tokens (e.g. `{keys}` typo) are left in place — the plugin doesn't error, the literal string lands in your note. If your template renders a markdown link, key/summary/status/type are escaped for link-text and the URL is escaped for link-href.
+Unknown tokens (e.g. `{keys}` typo) are left in place — the plugin doesn't error, the literal string lands in your note. If your template renders a markdown link, key/summary/status/type/priority/assignee/reporter/labels/updated are escaped for link-text and the URL is escaped for link-href.
 
 ### Stub frontmatter
 
