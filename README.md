@@ -85,7 +85,7 @@ For one-off lookups without inserting a link, run **JIRA: Look up issue…** and
 | :--- | :--- | :--- |
 | **JIRA base URL** | _(empty)_ | Validated on input; missing protocol is auto-fixed to `https://`. |
 | **Personal Access Token** | _(empty)_ | Encrypted at rest. See [How tokens are stored](#how-tokens-are-stored). |
-| **Link template** | `[{key} {summary}]({url})` | Tokens: `{key}`, `{summary}`, `{status}`, `{type}`, `{url}`. Unknown tokens are left as-is. |
+| **Link template** | `[{key} {summary}]({url})` | Tokens: `{key}`, `{summary}`, `{status}`, `{type}`, `{priority}`, `{assignee}`, `{reporter}`, `{labels}`, `{updated}`, `{url}`. Unknown tokens are left as-is. |
 | **Stubs folder** | `JIRA` | Where stub notes are written, vault-relative. |
 | **Auto-lookup on type** | off | When enabled, bare keys you type (matching configured prefixes) are replaced with a link after an idle pause. |
 | **Auto-lookup link style** | Minimal | `Minimal` = `[KEY](url)`. `Primary` = the *Link template* above. `Custom` = a separate template you control. |
