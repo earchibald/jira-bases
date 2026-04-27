@@ -93,7 +93,7 @@ export class JiraBasesSettingTab extends PluginSettingTab {
 
     const scopeNote = containerEl.createEl("p", { cls: "setting-item-description" });
     scopeNote.setText(
-      "Scope: JIRA Data Center / Server only (no Cloud), PAT auth (no OAuth), desktop only. " +
+      "Scope: JIRA Data Center only (no Cloud), PAT auth (no OAuth), desktop only. " +
         "One JIRA instance per vault. No telemetry.",
     );
 

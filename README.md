@@ -17,7 +17,7 @@ None of them do quite what I want, which is:
 
 To keep scope tight, this plugin explicitly **does not** support:
 
-- **JIRA Cloud.** Targets JIRA Data Center / Server only. The Cloud REST API surface, auth flows, and pagination semantics differ; supporting both would double maintenance and dilute the Data Center experience.
+- **JIRA Cloud.** Targets JIRA Data Center only. The Cloud REST API surface, auth flows, and pagination semantics differ; supporting both would double maintenance and dilute the Data Center experience.
 - **OAuth.** Personal Access Token (PAT) only. No 3LO, no device flow, no SSO bridging.
 - **Mobile.** Desktop-only (`isDesktopOnly: true`). Token storage relies on Electron `safeStorage`, which has no mobile equivalent.
 - **Multi-account / multi-instance.** One JIRA base URL + token per vault.
