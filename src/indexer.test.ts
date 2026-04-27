@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   collectAllKeys,
+  collectKeysInPaths,
   findOrphanedStubs,
   IndexerDeps,
 } from "./indexer";
@@ -88,6 +89,49 @@ describe("collectAllKeys", () => {
     });
     // Leading slash should be stripped; stub must still be excluded.
     const keys = await collectAllKeys(d, "/JIRA");
+    expect([...keys]).toEqual(["ABC-1"]);
+  });
+});
+
+describe("collectKeysInPaths", () => {
+  it("scans only the supplied paths", async () => {
+    const d = deps({
+      "a.md": "ref [t](https://jira.me.com/browse/ABC-1)\n",
+      "b.md": "ref [t](https://jira.me.com/browse/ABC-2)\n",
+      "c.md": "ref [t](https://jira.me.com/browse/ABC-3)\n",
+    });
+    const keys = await collectKeysInPaths(d, ["a.md", "b.md"], "JIRA");
+    expect([...keys].sort()).toEqual(["ABC-1", "ABC-2"]);
+  });
+
+  it("excludes paths inside the stubs folder even when explicitly listed", async () => {
+    const d = deps({
+      "user.md": "ref [t](https://jira.me.com/browse/ABC-1)\n",
+      "JIRA/ABC-9 stub.md":
+        "ref [t](https://jira.me.com/browse/SHOULD-NOT-COUNT-1)\n",
+    });
+    const keys = await collectKeysInPaths(
+      d,
+      ["user.md", "JIRA/ABC-9 stub.md"],
+      "JIRA",
+    );
+    expect([...keys].sort()).toEqual(["ABC-1"]);
+  });
+
+  it("returns empty when neither baseUrl nor prefixes are configured", async () => {
+    const d = deps(
+      { "a.md": "ABC-1 in the body\n" },
+      { baseUrl: "", prefixes: [], stubsFolder: "JIRA" },
+    );
+    const keys = await collectKeysInPaths(d, ["a.md"], "JIRA");
+    expect([...keys]).toEqual([]);
+  });
+
+  it("silently skips paths that don't exist", async () => {
+    const d = deps({
+      "a.md": "ref [t](https://jira.me.com/browse/ABC-1)\n",
+    });
+    const keys = await collectKeysInPaths(d, ["a.md", "missing.md"], "JIRA");
     expect([...keys]).toEqual(["ABC-1"]);
   });
 });

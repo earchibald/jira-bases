@@ -2,6 +2,15 @@
 
 All notable changes to **JIRA Bases** are recorded here. Releases follow [semver](https://semver.org/) and are auto-published to GitHub Releases when `manifest.json` / `package.json` versions change on `main`.
 
+## 0.8.0 — Sync UX: failure log, scoped sync, status-bar interaction (JB-11)
+
+- **Inspectable failure log.** When a sync ends with failures, the Notice now invites a click that opens a modal listing every failure (key, error kind, full message) plus the synced count and timestamp. Replaces the prior "Synced N stubs (M failed). First: …" Notice that only surfaced one failure.
+- **Scoped sync commands.** Three new commands let you refresh stubs without re-scanning the whole vault:
+  - **JIRA: Sync this note's references** — scans the active file only.
+  - **JIRA: Sync this folder's references** — scans every `.md` under the active note's folder (recursive).
+  - **JIRA: Sync this issue** — single-key prompt; auto-fills from the cursor when a JIRA key is under it.
+- **Clickable status bar.** The "JIRA: Last synced …" status-bar item is now interactive — click to reopen the last sync's failure log. Same surface is also available as the **JIRA: Show last sync summary** command for keyboard-only users.
+
 ## 0.6.2 — README rewrite (JB-7)
 
 - README rewritten as a user-facing reference (Overview / Quick Start / Reference / Troubleshooting / Non-goals). Per-version blocks moved here. Corrected the PAT-storage description: the token is encrypted with Electron `safeStorage` (using OS-managed keys) and the base64 ciphertext is stored in `<vault>/.obsidian/plugins/jira-bases/data.json` — not in the OS keychain directly.

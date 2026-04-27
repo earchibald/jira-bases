@@ -23,6 +23,7 @@ import {
 } from "./auto-lookup";
 import {
   collectAllKeys,
+  collectKeysInPaths,
   findOrphanedStubs,
   listStubPaths,
   IndexerDeps,
@@ -44,6 +45,8 @@ import {
 } from "./jira-key";
 import { CommentIssueSuggestModal } from "./comment-issue-modal";
 import { createFailedKeysTracker, FailedKeysTracker } from "./failed-keys-tracker";
+import { SyncFailure, SyncFailuresModal, SyncSummary } from "./sync-failures-modal";
+import { SyncIssueModal } from "./sync-issue-modal";
 import type { Editor } from "obsidian";
 import { generateBase } from "./base-generator";
 import { BaseGeneratorModal } from "./base-generator-modal";
@@ -107,6 +110,9 @@ export default class JiraBasesPlugin extends Plugin {
   private autoRefreshIntervalId: number | null = null;
   private statusBarItem: HTMLElement | null = null;
   private lastSyncTimestamp: number | null = null;
+  private lastSyncSummary: SyncSummary | null = null;
+  private lastSyncSummaryRunId: number = 0;
+  private nextSyncRunId: number = 1;
   private statusBarUpdateIntervalId: number | null = null;
 
   recreateFailedKeysTracker(): void {
@@ -145,6 +151,30 @@ export default class JiraBasesPlugin extends Plugin {
       id: "sync-issue-stubs",
       name: "JIRA: Sync issue stubs",
       callback: () => this.syncIssueStubs(),
+    });
+
+    this.addCommand({
+      id: "sync-this-note",
+      name: "JIRA: Sync this note's references",
+      callback: () => this.syncThisNote(),
+    });
+
+    this.addCommand({
+      id: "sync-this-folder",
+      name: "JIRA: Sync this folder's references",
+      callback: () => this.syncThisFolder(),
+    });
+
+    this.addCommand({
+      id: "sync-this-issue",
+      name: "JIRA: Sync this issue",
+      callback: () => this.syncThisIssue(),
+    });
+
+    this.addCommand({
+      id: "show-last-sync-summary",
+      name: "JIRA: Show last sync summary",
+      callback: () => this.showLastSyncSummary(),
     });
 
     this.addCommand({
@@ -333,6 +363,9 @@ export default class JiraBasesPlugin extends Plugin {
 
     if (!this.statusBarItem) {
       this.statusBarItem = this.addStatusBarItem();
+      this.statusBarItem.addClass("mod-clickable");
+      this.statusBarItem.setAttribute("aria-label", "Show last JIRA sync summary");
+      this.statusBarItem.addEventListener("click", () => this.showLastSyncSummary());
     }
 
     this.updateStatusBar();
@@ -373,6 +406,11 @@ export default class JiraBasesPlugin extends Plugin {
       } else {
         parts.push("Next: <1 min");
       }
+    }
+
+    const failureCount = this.lastSyncSummary?.failures.length ?? 0;
+    if (failureCount > 0) {
+      parts.push(`${failureCount} failed`);
     }
 
     this.statusBarItem.setText(parts.join(" | "));
@@ -609,21 +647,113 @@ export default class JiraBasesPlugin extends Plugin {
       return;
     }
     const deps = this.makeIndexerDeps();
-    const vault = this.makeVaultAdapter();
-    const client = this.makeClient();
     const keys = [...(await collectAllKeys(deps, this.settings.stubsFolder))];
     if (keys.length === 0) {
       new Notice("No JIRA references found in vault.");
       return;
     }
+    await this.syncKeys(keys, "vault");
+  }
+
+  async syncThisNote(): Promise<void> {
+    if (!this.settings.baseUrl) {
+      new Notice("Set your JIRA base URL in plugin settings.");
+      return;
+    }
+    const file = this.app.workspace.getActiveFile();
+    if (!file) {
+      new Notice("Open a note before running JIRA: Sync this note's references.");
+      return;
+    }
+    const deps = this.makeIndexerDeps();
+    const keys = [
+      ...(await collectKeysInPaths(deps, [file.path], this.settings.stubsFolder)),
+    ];
+    if (keys.length === 0) {
+      new Notice(`No JIRA references found in ${file.path}.`);
+      return;
+    }
+    await this.syncKeys(keys, file.path);
+  }
+
+  async syncThisFolder(): Promise<void> {
+    if (!this.settings.baseUrl) {
+      new Notice("Set your JIRA base URL in plugin settings.");
+      return;
+    }
+    const file = this.app.workspace.getActiveFile();
+    if (!file) {
+      new Notice("Open a note inside the folder you want to sync.");
+      return;
+    }
+    const folder = file.parent;
+    if (!(folder instanceof TFolder)) {
+      new Notice("Active note is not inside a folder.");
+      return;
+    }
+    const paths: string[] = [];
+    const walk = (f: TFolder) => {
+      for (const child of f.children) {
+        if (child instanceof TFile && child.extension === "md") {
+          paths.push(child.path);
+        } else if (child instanceof TFolder) {
+          walk(child);
+        }
+      }
+    };
+    walk(folder);
+    if (paths.length === 0) {
+      new Notice(`No notes found under ${folder.path || "/"}.`);
+      return;
+    }
+    const deps = this.makeIndexerDeps();
+    const keys = [
+      ...(await collectKeysInPaths(deps, paths, this.settings.stubsFolder)),
+    ];
+    if (keys.length === 0) {
+      new Notice(`No JIRA references found under ${folder.path || "/"}.`);
+      return;
+    }
+    await this.syncKeys(keys, folder.path || "/");
+  }
+
+  async syncThisIssue(): Promise<void> {
+    if (!this.settings.baseUrl) {
+      new Notice("Set your JIRA base URL in plugin settings.");
+      return;
+    }
+    const editor = this.app.workspace.activeEditor?.editor ?? null;
+    let prefilled = "";
+    if (editor) {
+      const cursor = editor.getCursor();
+      const hit = findKeyAtCol(editor.getLine(cursor.line), cursor.ch);
+      if (hit) prefilled = hit.key;
+    }
+    new SyncIssueModal(this.app, prefilled, this.settings.baseUrl, (key) => {
+      void this.syncKeys([key], `issue ${key}`);
+    }).open();
+  }
+
+  showLastSyncSummary(): void {
+    if (!this.lastSyncSummary) {
+      new Notice("JIRA: no sync has run yet in this session.");
+      return;
+    }
+    new SyncFailuresModal(this.app, this.lastSyncSummary).open();
+  }
+
+  private async syncKeys(keys: string[], scopeLabel: string): Promise<void> {
+    const runId = this.nextSyncRunId++;
+    const deps = this.makeIndexerDeps();
+    const vault = this.makeVaultAdapter();
+    const client = this.makeClient();
     const existingByKey = await listStubPaths(deps, this.settings.stubsFolder);
     let synced = 0;
-    const failures: string[] = [];
+    const failures: SyncFailure[] = [];
     for (const key of keys) {
       const r = await client.getIssueDetails(key);
       if (!r.ok) {
-        const detail = errorMessage(r.error);
-        failures.push(`${key}: ${detail}`);
+        failures.push({ key, kind: r.error.kind, message: errorMessage(r.error) });
         console.warn(`jira-bases: ${key} — ${r.error.kind}`, r.error);
         continue;
       }
@@ -637,19 +767,34 @@ export default class JiraBasesPlugin extends Plugin {
         synced++;
       } catch (e) {
         const msg = (e as Error).message;
-        failures.push(`${key}: write failed — ${msg}`);
+        failures.push({ key, kind: "write", message: `write failed — ${msg}` });
         console.warn(`jira-bases: ${key} — write failed`, e);
       }
     }
-    this.lastSyncTimestamp = Date.now();
-    this.updateStatusBar();
+    const timestamp = Date.now();
+    const summary: SyncSummary = { scope: scopeLabel, synced, failures, timestamp };
+    // Only update the stored summary if this is the latest run.
+    if (runId > this.lastSyncSummaryRunId) {
+      this.lastSyncTimestamp = timestamp;
+      this.lastSyncSummary = summary;
+      this.lastSyncSummaryRunId = runId;
+      this.updateStatusBar();
+    }
+
     if (failures.length === 0) {
       new Notice(`Synced ${synced} stubs.`);
-    } else {
-      new Notice(
-        `Synced ${synced} stubs (${failures.length} failed).\nFirst: ${failures[0]}`,
-        10000,
-      );
+      return;
+    }
+    const notice = new Notice(
+      `Synced ${synced} stubs (${failures.length} failed). Click for details.`,
+      10000,
+    );
+    // Close over the local summary, not this.lastSyncSummary, so the click shows the right result.
+    const messageEl = (notice as any).messageEl ?? (notice as any).noticeEl;
+    if (messageEl) {
+      messageEl.addEventListener("click", () => {
+        new SyncFailuresModal(this.app, summary).open();
+      });
     }
   }
 
