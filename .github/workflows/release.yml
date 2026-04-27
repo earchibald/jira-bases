@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Read manifest version
+        id: version
+        run: |
+          version=$(jq -r .version manifest.json)
+          if [[ -z "$version" || "$version" == "null" ]]; then
+            echo "ERROR: could not read a valid version from manifest.json" >&2
+            exit 1
+          fi
+          # Bare semver tag — no `v` prefix (BRAT/Obsidian community-plugin convention).
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if tag already exists
+        id: guard
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if git rev-parse --verify --quiet "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists; nothing to release."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node
+        if: steps.guard.outputs.skip == 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install
+        if: steps.guard.outputs.skip == 'false'
+        run: |
+          if ! npm ci; then
+            {
+              echo "## ❌ \`npm ci\` failed — lockfile out of sync"
+              echo ""
+              echo "**Likely cause:** \`package.json\` was edited without"
+              echo "regenerating \`package-lock.json\`."
+              echo ""
+              echo "**Fix:** run \`npm install\` and commit the updated"
+              echo "\`package-lock.json\` before merging."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Build
+        if: steps.guard.outputs.skip == 'false'
+        run: npm run build
+
+      - name: Create and push tag
+        if: steps.guard.outputs.skip == 'false'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - name: Create release
+        if: steps.guard.outputs.skip == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$TAG" \
+            --title "JIRA Bases v$VERSION" \
+            --generate-notes \
+            main.js \
+            manifest.json \
+            styles.css
