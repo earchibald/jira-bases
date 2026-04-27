@@ -2,6 +2,16 @@
 
 All notable changes to **JIRA Bases** are recorded here. Releases follow [semver](https://semver.org/) and are auto-published to GitHub Releases when `manifest.json` / `package.json` versions change on `main`.
 
+## 0.9.0 — Settings polish and plugin lifecycle hygiene (JB-8)
+
+- **Settings copy.** Each section now has a paragraph-level intro instead of just a heading. The PAT row's storage description matches reality — encrypted at rest using Electron `safeStorage` with the ciphertext written to this vault's plugin-data file (the OS keychain holds only the derived key, not the token itself).
+- **Human units.** The auto-lookup idle delay is now entered in seconds (with the ms range called out inline) instead of raw milliseconds. The auto-refresh interval description also documents the `document.hidden` skip — refresh ticks are no-ops while the Obsidian window is hidden and resume on the next scheduled tick after it becomes visible.
+- **Inline validation.**
+  - Project prefixes that fail the `[A-Z][A-Z0-9]+` shape are still filtered out, but rejected entries are now listed below the input as a warning instead of being silently dropped.
+  - Link-template and custom auto-lookup-template inputs warn inline when they reference unknown tokens (e.g. `{keys}` typo). Templates still render unknown tokens as-is — the warning is a diagnostic, not a hard error.
+- **Inline Test connection.** A `Test` button now sits right next to the Save/Clear token buttons so connection verification follows the natural URL → PAT → Test flow. The standalone "Test connection" setting row is unchanged.
+- **Plugin lifecycle hygiene.** A new `onunload()` cancels the auto-lookup idle scheduler's raw `setTimeout`, defensively detaches the status-bar item, and clears the tracked auto-refresh / status-bar update interval ids. The `registerInterval`-wrapped intervals were already reclaimed by Obsidian's `Component` lifecycle — this just makes that explicit and closes the one resource (the raw timer) Obsidian doesn't track for us.
+
 ## 0.8.0 — Sync UX: failure log, scoped sync, status-bar interaction (JB-11)
 
 - **Inspectable failure log.** When a sync ends with failures, the Notice now invites a click that opens a modal listing every failure (key, error kind, full message) plus the synced count and timestamp. Replaces the prior "Synced N stubs (M failed). First: …" Notice that only surfaced one failure.

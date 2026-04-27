@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { renderTemplate, IssueFields, escapeLinkText, escapeLinkUrl } from "./template";
+import {
+  renderTemplate,
+  IssueFields,
+  escapeLinkText,
+  escapeLinkUrl,
+  findUnknownTemplateTokens,
+} from "./template";
 import type { IssueDetails } from "./jira-fields";
 
 const fields: IssueDetails = {
@@ -94,6 +100,39 @@ describe("escapeLinkText", () => {
   });
   it("leaves unaffected text alone", () => {
     expect(escapeLinkText("hello world!")).toBe("hello world!");
+  });
+});
+
+describe("findUnknownTemplateTokens", () => {
+  it("returns empty for templates that only use known tokens", () => {
+    expect(findUnknownTemplateTokens("[{key} {summary}]({url})")).toEqual([]);
+    expect(
+      findUnknownTemplateTokens(
+        "{key}/{summary}/{status}/{type}/{priority}/{assignee}/{reporter}/{labels}/{updated}/{url}",
+      ),
+    ).toEqual([]);
+  });
+
+  it("returns unknown token names without braces", () => {
+    expect(findUnknownTemplateTokens("[{keys}]({url})")).toEqual(["keys"]);
+    expect(findUnknownTemplateTokens("{foo} {bar}")).toEqual(["foo", "bar"]);
+  });
+
+  it("collapses duplicates, preserving first-seen order", () => {
+    expect(findUnknownTemplateTokens("{foo} {bar} {foo}")).toEqual([
+      "foo",
+      "bar",
+    ]);
+  });
+
+  it("ignores literal braces that aren't tokens", () => {
+    expect(findUnknownTemplateTokens("{{not a token}}")).toEqual([]);
+    expect(findUnknownTemplateTokens("{}")).toEqual([]);
+    expect(findUnknownTemplateTokens("{1abc}")).toEqual([]);
+  });
+
+  it("returns empty for an empty template", () => {
+    expect(findUnknownTemplateTokens("")).toEqual([]);
   });
 });
 
