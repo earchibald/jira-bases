@@ -3,7 +3,7 @@
   "name": "JIRA Bases",
   "version": "0.6.0",
   "minAppVersion": "1.5.0",
-  "description": "JIRA Data Center integration for smart links, Bases metadata, and issue lookup.",
+  "description": "JIRA Data Center integration (PAT-only, desktop) for smart links, Bases metadata, and issue lookup. Not for JIRA Cloud.",
   "author": "Eugene Archibald",
   "isDesktopOnly": true
 }

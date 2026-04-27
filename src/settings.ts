@@ -91,6 +91,12 @@ export class JiraBasesSettingTab extends PluginSettingTab {
 
     containerEl.createEl("h2", { text: "JIRA Bases" });
 
+    const scopeNote = containerEl.createEl("p", { cls: "setting-item-description" });
+    scopeNote.setText(
+      "Scope: JIRA Data Center / Server only (no Cloud), PAT auth (no OAuth), desktop only. " +
+        "One JIRA instance per vault. No telemetry.",
+    );
+
     const urlSetting = new Setting(containerEl)
       .setName("JIRA base URL")
       .setDesc("e.g. https://jira.me.com (no trailing slash required)");
