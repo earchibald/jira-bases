@@ -13,6 +13,17 @@ None of them do quite what I want, which is:
 - Auth: We can allow JIRA PAT but I would *prefer* to use human-in-the-middle OAuth for this where available (as in my case)
 - Combining the metadata, bases and plugin capabilities we should be able to design bases with rich information from JIRA
 
+## Non-goals
+
+To keep scope tight, this plugin explicitly **does not** support:
+
+- **JIRA Cloud.** Targets JIRA Data Center only. The Cloud REST API surface, auth flows, and pagination semantics differ; supporting both would double maintenance and dilute the Data Center experience.
+- **OAuth.** Personal Access Token (PAT) only. No 3LO, no device flow, no SSO bridging.
+- **Mobile.** Desktop-only (`isDesktopOnly: true`). Token storage relies on Electron `safeStorage`, which has no mobile equivalent.
+- **Multi-account / multi-instance.** One JIRA base URL + token per vault.
+- **Live Preview decorations beyond hover preview.** No inline status pills, no in-editor issue summaries, no CodeMirror widgets — hover-only.
+- **Telemetry.** No analytics, no crash reporting, no phone-home.
+
 ## Status
 
 v0.2: Smart link insertion on top of v0.1 foundation.
