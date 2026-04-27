@@ -29,6 +29,8 @@ import {
 } from "./indexer";
 import { writeStub, VaultAdapter } from "./stub-writer";
 import { ConfirmModal } from "./confirm-modal";
+import { OverwriteModal } from "./overwrite-modal";
+import { nextAvailablePath } from "./path-utils";
 import { createIssueCache } from "./issue-cache";
 import { createIssueService, IssueService } from "./issue-service";
 import { registerHoverPreview } from "./hover-preview";
@@ -697,10 +699,28 @@ export default class JiraBasesPlugin extends Plugin {
       const vault = this.makeVaultAdapter();
       const stubsFolder = this.settings.stubsFolder.replace(/^\/+|\/+$/g, "");
       const baseFilePath = stubsFolder ? `${stubsFolder}/JIRA Issues.base` : `JIRA Issues.base`;
+
+      const writeAt = async (path: string) => {
+        try {
+          if (stubsFolder) await vault.ensureFolder(stubsFolder);
+          await vault.write(path, baseContent);
+          new Notice(`Bases view created at ${path}`);
+        } catch (e) {
+          new Notice(`Failed to create view: ${(e as Error).message}`);
+        }
+      };
+
       try {
-        if (stubsFolder) await vault.ensureFolder(stubsFolder);
-        await vault.write(baseFilePath, baseContent);
-        new Notice(`Bases view created at ${baseFilePath}`);
+        if (await vault.exists(baseFilePath)) {
+          const altPath = await nextAvailablePath(vault, baseFilePath);
+          new OverwriteModal(this.app, baseFilePath, altPath, {
+            onOverwrite: () => void writeAt(baseFilePath),
+            onSaveAsNew: () => void writeAt(altPath),
+            onCancel: () => new Notice("Bases view creation cancelled."),
+          }).open();
+          return;
+        }
+        await writeAt(baseFilePath);
       } catch (e) {
         new Notice(`Failed to create view: ${(e as Error).message}`);
       }

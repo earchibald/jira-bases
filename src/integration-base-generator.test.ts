@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { generateBase, type BaseConfig } from "./base-generator";
 import { VaultAdapter } from "./stub-writer";
+import { nextAvailablePath } from "./path-utils";
+
+type OverwriteChoice = "overwrite" | "save-as-new" | "cancel";
 
 function inMemoryVault(initial: Record<string, string> = {}): VaultAdapter & {
   files: Map<string, string>;
@@ -31,7 +34,8 @@ async function runEndToEndFlow(
   columns: string[],
   stubsFolder: string,
   viewName?: string,
-): Promise<{ success: boolean; error?: string }> {
+  onCollision: () => OverwriteChoice = () => "overwrite",
+): Promise<{ success: boolean; error?: string; writtenPath?: string; cancelled?: boolean }> {
   if (columns.length === 0) {
     return { success: false, error: "Select at least one column." };
   }
@@ -43,8 +47,15 @@ async function runEndToEndFlow(
   const normalizedFolder = stubsFolder.replace(/\/+$/, "");
   const baseFilePath = `${normalizedFolder}/JIRA Issues.base`;
   try {
-    await vault.write(baseFilePath, baseContent);
-    return { success: true };
+    let target = baseFilePath;
+    if (await vault.exists(baseFilePath)) {
+      const altPath = await nextAvailablePath(vault, baseFilePath);
+      const choice = onCollision();
+      if (choice === "cancel") return { success: true, cancelled: true };
+      target = choice === "save-as-new" ? altPath : baseFilePath;
+    }
+    await vault.write(target, baseContent);
+    return { success: true, writtenPath: target };
   } catch (e) {
     return { success: false, error: (e as Error).message };
   }
@@ -76,17 +87,85 @@ describe("integration: base generator end-to-end", () => {
     expect(vault.files.has("JIRA/JIRA Issues.base")).toBe(false);
   });
 
-  it("overwrites existing base file", async () => {
+  it("overwrites existing base file when user confirms overwrite", async () => {
     const vault = inMemoryVault({
       "JIRA/JIRA Issues.base": "old content",
     });
-    const result = await runEndToEndFlow(vault, ["key", "summary"], "JIRA");
+    const result = await runEndToEndFlow(
+      vault,
+      ["key", "summary"],
+      "JIRA",
+      undefined,
+      () => "overwrite",
+    );
 
     expect(result.success).toBe(true);
+    expect(result.writtenPath).toBe("JIRA/JIRA Issues.base");
     const baseContent = vault.files.get("JIRA/JIRA Issues.base")!;
     expect(baseContent).not.toContain("old content");
     expect(baseContent).toContain("- jira_key");
     expect(baseContent).toContain("- jira_summary");
+  });
+
+  it("does not write when the user cancels the overwrite prompt", async () => {
+    const vault = inMemoryVault({
+      "JIRA/JIRA Issues.base": "old content",
+    });
+    const result = await runEndToEndFlow(
+      vault,
+      ["key", "summary"],
+      "JIRA",
+      undefined,
+      () => "cancel",
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.cancelled).toBe(true);
+    expect(result.writtenPath).toBeUndefined();
+    expect(vault.files.get("JIRA/JIRA Issues.base")).toBe("old content");
+    expect(vault.files.has("JIRA/JIRA Issues (1).base")).toBe(false);
+  });
+
+  it("writes to a disambiguated path when the user picks 'save as new'", async () => {
+    const vault = inMemoryVault({
+      "JIRA/JIRA Issues.base": "old content",
+    });
+    const result = await runEndToEndFlow(
+      vault,
+      ["key", "summary"],
+      "JIRA",
+      undefined,
+      () => "save-as-new",
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.writtenPath).toBe("JIRA/JIRA Issues (1).base");
+    expect(vault.files.get("JIRA/JIRA Issues.base")).toBe("old content");
+    const altContent = vault.files.get("JIRA/JIRA Issues (1).base")!;
+    expect(altContent).toContain("- jira_key");
+    expect(altContent).toContain("- jira_summary");
+  });
+
+  it("walks past existing disambiguated paths when picking 'save as new'", async () => {
+    const vault = inMemoryVault({
+      "JIRA/JIRA Issues.base": "old content",
+      "JIRA/JIRA Issues (1).base": "alt 1",
+      "JIRA/JIRA Issues (2).base": "alt 2",
+    });
+    const result = await runEndToEndFlow(
+      vault,
+      ["key"],
+      "JIRA",
+      undefined,
+      () => "save-as-new",
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.writtenPath).toBe("JIRA/JIRA Issues (3).base");
+    expect(vault.files.get("JIRA/JIRA Issues.base")).toBe("old content");
+    expect(vault.files.get("JIRA/JIRA Issues (1).base")).toBe("alt 1");
+    expect(vault.files.get("JIRA/JIRA Issues (2).base")).toBe("alt 2");
+    expect(vault.files.has("JIRA/JIRA Issues (3).base")).toBe(true);
   });
 
   it("uses custom view name when provided", async () => {
