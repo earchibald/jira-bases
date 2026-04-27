@@ -9,44 +9,13 @@ export interface IndexerDeps {
     prefixes: string[];
     stubsFolder: string;
   };
-  setReferences(
-    path: string,
-    keys: string[],
-    links: string[],
-  ): Promise<void>;
-}
-
-function asStringList(v: unknown): string[] {
-  if (!Array.isArray(v)) return [];
-  return v.filter((x): x is string => typeof x === "string");
-}
-
-function stubWikilink(path: string): string {
-  const withoutExt = path.replace(/\.md$/, "");
-  return `[[${withoutExt}]]`;
-}
-
-export async function rescanFile(
-  deps: IndexerDeps,
-  path: string,
-): Promise<void> {
-  const content = await deps.read(path);
-  if (content === null) return;
-  const { baseUrl, prefixes, stubsFolder } = deps.getSettings();
-  const { body } = readFrontmatter(content);
-  const found = [...findReferences(body, baseUrl, prefixes)].sort();
-  const stubs = await listStubPaths(deps, stubsFolder);
-  const links = found
-    .map((k) => stubs.get(k))
-    .filter((p): p is string => typeof p === "string")
-    .map(stubWikilink);
-  await deps.setReferences(path, found, links);
 }
 
 export async function collectAllKeys(
   deps: IndexerDeps,
   stubsFolder: string,
 ): Promise<Set<string>> {
+  const { baseUrl, prefixes } = deps.getSettings();
   const keys = new Set<string>();
   const notes = await deps.listNotes();
   const prefix = stubsFolder.replace(/\/+$/, "") + "/";
@@ -54,8 +23,8 @@ export async function collectAllKeys(
     if (path.startsWith(prefix)) continue;
     const content = await deps.read(path);
     if (content === null) continue;
-    const { frontmatter } = readFrontmatter(content);
-    for (const k of asStringList(frontmatter.jira_issues)) keys.add(k);
+    const { body } = readFrontmatter(content);
+    for (const k of findReferences(body, baseUrl, prefixes)) keys.add(k);
   }
   return keys;
 }

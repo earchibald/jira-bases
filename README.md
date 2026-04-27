@@ -46,9 +46,14 @@ Lets Obsidian Bases correlate notes and JIRA issues.
 
 ### How it works
 
-- On save, the plugin scans the active note for JIRA references — both `[…](<baseUrl>/browse/KEY)` links and (optionally) bare keys like `ABC-1` for project prefixes you've configured — and writes `jira_issues: [KEY, …]` to the note's frontmatter.
-- The command "JIRA: Sync issue stubs" walks every referenced key, fetches current fields from JIRA, and maintains one note per issue under your configured stubs folder (default `JIRA/`). Each stub has a managed frontmatter block plus a `## Notes` section you can edit freely — the plugin never touches content below `## Notes`.
+- "JIRA: Sync issue stubs" scans every note's body for JIRA references — both `[…](<baseUrl>/browse/KEY)` links and (optionally) bare keys like `ABC-1` for project prefixes you've configured — fetches current fields from JIRA, and maintains one note per issue under your configured stubs folder (default `JIRA/`). Each stub has a managed frontmatter block plus a `## Notes` section you can edit freely — the plugin never touches content below `## Notes`.
 - "JIRA: Clean orphaned stubs" deletes stubs for issues no longer referenced anywhere.
+
+### Frontmatter policy
+
+The plugin **does not modify the frontmatter of your own notes**. It will not write `jira_issues`, `jira_links`, or any other field to a note you authored — even if the note's body references issues. Only stub notes inside the configured stubs folder have their frontmatter managed by the plugin.
+
+If you want to filter a Bases view by issue references, scan the stubs folder directly (`file.inFolder("JIRA")`) and use the managed `jira_*` fields on each stub. (Notes from earlier plugin versions that already contain `jira_issues:` keep that data — the plugin won't update or remove it.)
 
 ### Settings
 
