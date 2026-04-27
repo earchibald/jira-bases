@@ -50,6 +50,7 @@ import { SyncIssueModal } from "./sync-issue-modal";
 import type { Editor } from "obsidian";
 import { generateBase } from "./base-generator";
 import { BaseGeneratorModal } from "./base-generator-modal";
+import { resolveIssueKey } from "./resolve-issue-key";
 
 /**
  * Escape IssueDetails fields for safe use in renderTemplate.
@@ -135,10 +136,24 @@ export default class JiraBasesPlugin extends Plugin {
     this.recreateFailedKeysTracker();
     this.addSettingTab(new JiraBasesSettingTab(this.app, this));
 
+    // Connection
     this.addCommand({
       id: "test-connection",
       name: "JIRA: Test connection",
       callback: () => this.testConnection(),
+    });
+
+    // Single-issue actions (look up, link, navigate, comment)
+    this.addCommand({
+      id: "lookup-issue",
+      name: "JIRA: Look up issue…",
+      callback: () => {
+        if (!this.settings.baseUrl) {
+          new Notice("Set your JIRA base URL in plugin settings.");
+          return;
+        }
+        new LookupModal(this.app, this.issueService, this.settings.baseUrl).open();
+      },
     });
 
     this.addCommand({
@@ -148,9 +163,34 @@ export default class JiraBasesPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: "sync-issue-stubs",
-      name: "JIRA: Sync issue stubs",
-      callback: () => this.syncIssueStubs(),
+      id: "open-issue-in-browser",
+      name: "JIRA: Open issue in browser",
+      callback: () => this.openIssueInBrowser(),
+    });
+
+    this.addCommand({
+      id: "copy-issue-url",
+      name: "JIRA: Copy issue URL",
+      callback: () => this.copyIssueUrl(),
+    });
+
+    this.addCommand({
+      id: "add-comment",
+      name: "JIRA: Add comment to issue…",
+      editorCallback: (editor) => this.addCommentToIssue(editor),
+    });
+
+    // Stub maintenance
+    this.addCommand({
+      id: "refresh-this-stub",
+      name: "JIRA: Refresh this stub",
+      callback: () => this.refreshThisStub(),
+    });
+
+    this.addCommand({
+      id: "sync-this-issue",
+      name: "JIRA: Sync this issue",
+      callback: () => this.syncThisIssue(),
     });
 
     this.addCommand({
@@ -166,9 +206,9 @@ export default class JiraBasesPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: "sync-this-issue",
-      name: "JIRA: Sync this issue",
-      callback: () => this.syncThisIssue(),
+      id: "sync-issue-stubs",
+      name: "JIRA: Sync issue stubs",
+      callback: () => this.syncIssueStubs(),
     });
 
     this.addCommand({
@@ -181,6 +221,13 @@ export default class JiraBasesPlugin extends Plugin {
       id: "clean-orphaned-stubs",
       name: "JIRA: Clean orphaned stubs",
       callback: () => this.cleanOrphanedStubs(),
+    });
+
+    // Bases view generator
+    this.addCommand({
+      id: "generate-bases-view",
+      name: "JIRA: Generate Bases view",
+      callback: () => this.generateBasesView(),
     });
 
     this.issueService = createIssueService(
@@ -213,30 +260,6 @@ export default class JiraBasesPlugin extends Plugin {
         this.ensureAutoLookupScheduler().bump();
       }),
     );
-
-    this.addCommand({
-      id: "lookup-issue",
-      name: "JIRA: Look up issue…",
-      callback: () => {
-        if (!this.settings.baseUrl) {
-          new Notice("Set your JIRA base URL in plugin settings.");
-          return;
-        }
-        new LookupModal(this.app, this.issueService, this.settings.baseUrl).open();
-      },
-    });
-
-    this.addCommand({
-      id: "add-comment",
-      name: "JIRA: Add comment to issue…",
-      editorCallback: (editor) => this.addCommentToIssue(editor),
-    });
-
-    this.addCommand({
-      id: "generate-bases-view",
-      name: "JIRA: Generate Bases view",
-      callback: () => this.generateBasesView(),
-    });
 
     this.setupAutoRefresh();
     this.setupStatusBar();
@@ -617,6 +640,104 @@ export default class JiraBasesPlugin extends Plugin {
       },
     });
     modal.open();
+  }
+
+  private resolveCurrentIssueKey(editor: Editor | null): string | null {
+    const file = this.app.workspace.getActiveFile();
+    let fm: Record<string, unknown> | null = null;
+    if (file) {
+      const cache = this.app.metadataCache.getFileCache(file);
+      fm = (cache?.frontmatter as Record<string, unknown> | undefined) ?? null;
+    }
+    return resolveIssueKey({
+      editor,
+      activeFileFrontmatter: fm,
+      baseUrl: this.settings.baseUrl,
+    });
+  }
+
+  async openIssueInBrowser(): Promise<void> {
+    if (!this.settings.baseUrl) {
+      new Notice("Set your JIRA base URL in plugin settings.");
+      return;
+    }
+    const editor = this.app.workspace.activeEditor?.editor ?? null;
+    const key = this.resolveCurrentIssueKey(editor);
+    if (!key) {
+      new Notice(
+        "No JIRA issue at cursor or in selection, and active note has no jira_key.",
+      );
+      return;
+    }
+    const url = `${this.settings.baseUrl.replace(/\/+$/, "")}/browse/${key}`;
+    window.open(url, "_blank");
+  }
+
+  async copyIssueUrl(): Promise<void> {
+    if (!this.settings.baseUrl) {
+      new Notice("Set your JIRA base URL in plugin settings.");
+      return;
+    }
+    const editor = this.app.workspace.activeEditor?.editor ?? null;
+    const key = this.resolveCurrentIssueKey(editor);
+    if (!key) {
+      new Notice(
+        "No JIRA issue at cursor or in selection, and active note has no jira_key.",
+      );
+      return;
+    }
+    const url = `${this.settings.baseUrl.replace(/\/+$/, "")}/browse/${key}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      new Notice(`Copied ${key} URL.`);
+    } catch (e) {
+      new Notice(`Failed to copy URL: ${(e as Error).message}`);
+    }
+  }
+
+  async refreshThisStub(): Promise<void> {
+    if (!this.settings.baseUrl) {
+      new Notice("Set your JIRA base URL in plugin settings.");
+      return;
+    }
+    const file = this.app.workspace.getActiveFile();
+    if (!file) {
+      new Notice("Active note isn't a JIRA stub.");
+      return;
+    }
+    const normalizedFolder = this.settings.stubsFolder.replace(/^\/+|\/+$/g, "");
+    const normalizedPath = file.path.startsWith("/") ? file.path.slice(1) : file.path;
+    if (!normalizedPath.startsWith(normalizedFolder + "/") && normalizedPath !== normalizedFolder) {
+      new Notice("Active note isn't in the configured stubs folder.");
+      return;
+    }
+    const cache = this.app.metadataCache.getFileCache(file);
+    const rawKey = cache?.frontmatter?.jira_key;
+    if (typeof rawKey !== "string" || !/^[A-Z][A-Z0-9]+-\d+$/.test(rawKey.trim())) {
+      new Notice("Active note isn't a JIRA stub.");
+      return;
+    }
+    const key = rawKey.trim();
+    const r = await this.makeClient().getIssueDetails(key);
+    if (!r.ok) {
+      new Notice(errorMessage(r.error));
+      return;
+    }
+    if (r.value.key !== key) {
+      new Notice(`Issue key changed: frontmatter has ${key}, but JIRA returned ${r.value.key}. Refresh cancelled to avoid filename mismatch.`);
+      return;
+    }
+    try {
+      await writeStub(
+        this.makeVaultAdapter(),
+        this.settings.stubsFolder,
+        r.value,
+        file.path,
+      );
+      new Notice(`Refreshed ${key}.`);
+    } catch (e) {
+      new Notice(`Refresh failed: ${(e as Error).message}`);
+    }
   }
 
   async addCommentToIssue(editor: Editor): Promise<void> {
