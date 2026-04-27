@@ -21,6 +21,28 @@ const KNOWN_TOKENS: ReadonlyArray<keyof IssueDetails> = [
   "url",
 ];
 
+export const KNOWN_TEMPLATE_TOKENS: ReadonlyArray<string> = KNOWN_TOKENS;
+
+const TOKEN_RE = /\{([a-zA-Z]+)\}/g;
+
+/**
+ * Return distinct unknown token names found in `template` (i.e. `{name}`
+ * placeholders that don't match a known IssueDetails field). Order is the
+ * order of first appearance in the input; duplicates are collapsed.
+ */
+export function findUnknownTemplateTokens(template: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const m of template.matchAll(TOKEN_RE)) {
+    const name = m[1];
+    if ((KNOWN_TOKENS as readonly string[]).includes(name)) continue;
+    if (seen.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
+}
+
 export function renderTemplate(
   template: string,
   fields: IssueFields | IssueDetails,

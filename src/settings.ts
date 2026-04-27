@@ -1,7 +1,61 @@
 import { App, PluginSettingTab, Setting, Notice } from "obsidian";
 import type JiraBasesPlugin from "./main";
+import { findUnknownTemplateTokens } from "./template";
 
 export type AutoLookupMode = "minimal" | "primary" | "custom";
+
+const PROJECT_PREFIX_RE = /^[A-Z][A-Z0-9]+$/;
+
+/**
+ * Split a comma-separated string into accepted and rejected JIRA project
+ * prefixes. Whitespace is trimmed, entries are uppercased, empty entries are
+ * dropped silently, and anything that fails {@link PROJECT_PREFIX_RE} (e.g.
+ * single-letter, contains punctuation) is reported as rejected so the
+ * settings tab can surface it instead of silently dropping it.
+ */
+/**
+ * Render an internal millisecond value as a human-friendly seconds string for
+ * sub-minute timings. Whole seconds → integer; otherwise one or two decimals
+ * trimmed of trailing zeros (e.g. 2000 → "2", 1500 → "1.5", 100 → "0.1").
+ */
+export function formatMsAsSeconds(ms: number): string {
+  if (!Number.isFinite(ms)) return "";
+  const seconds = ms / 1000;
+  if (Number.isInteger(seconds)) return String(seconds);
+  return seconds.toFixed(2).replace(/\.?0+$/, "");
+}
+
+/**
+ * Parse a user-entered "seconds" string into milliseconds. Returns null on
+ * empty/invalid input so callers can ignore the change rather than save 0.
+ * Accepts integers and decimals; rejects negatives and non-numeric junk.
+ */
+export function parseSecondsToMs(input: string): number | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  const seconds = Number(trimmed);
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  return Math.round(seconds * 1000);
+}
+
+export function splitProjectPrefixes(input: string): {
+  accepted: string[];
+  rejected: string[];
+} {
+  const accepted: string[] = [];
+  const rejected: string[] = [];
+  for (const raw of input.split(",")) {
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const upper = trimmed.toUpperCase();
+    if (PROJECT_PREFIX_RE.test(upper)) {
+      accepted.push(upper);
+    } else {
+      rejected.push(trimmed);
+    }
+  }
+  return { accepted, rejected };
+}
 
 export interface PluginSettings {
   baseUrl: string;
@@ -43,9 +97,39 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 export class JiraBasesSettingTab extends PluginSettingTab {
   private pendingToken = "";
   private urlValidationEl: HTMLElement | null = null;
+  private prefixFeedbackEl: HTMLElement | null = null;
+  private linkTemplateFeedbackEl: HTMLElement | null = null;
+  private autoLookupTemplateFeedbackEl: HTMLElement | null = null;
 
   constructor(app: App, private plugin: JiraBasesPlugin) {
     super(app, plugin);
+  }
+
+  private renderTemplateWarning(
+    el: HTMLElement | null,
+    template: string,
+  ): void {
+    if (!el) return;
+    el.empty();
+    const unknown = findUnknownTemplateTokens(template);
+    if (unknown.length === 0) return;
+    el.createEl("div", {
+      text: `⚠️ Unknown token${unknown.length === 1 ? "" : "s"}: ${unknown
+        .map((t) => `{${t}}`)
+        .join(", ")}. Left as-is when rendered — check for typos.`,
+      cls: "setting-item-description mod-warning",
+    });
+  }
+
+  private renderPrefixFeedback(rejected: string[]): void {
+    const el = this.prefixFeedbackEl;
+    if (!el) return;
+    el.empty();
+    if (rejected.length === 0) return;
+    el.createEl("div", {
+      text: `⚠️ Ignored: ${rejected.join(", ")}. Prefixes must be 2+ characters, start with a letter, and contain only letters/digits.`,
+      cls: "setting-item-description mod-warning",
+    });
   }
 
   private validateUrl(url: string): { valid: boolean; message: string; fixed?: string } {
@@ -96,6 +180,13 @@ export class JiraBasesSettingTab extends PluginSettingTab {
       "Scope: JIRA Data Center only (no Cloud), PAT auth (no OAuth), desktop only. " +
         "One JIRA instance per vault. No telemetry.",
     );
+
+    containerEl.createEl("h3", { text: "Connection & links" });
+    containerEl
+      .createEl("p", { cls: "setting-item-description" })
+      .setText(
+        "Point the plugin at your JIRA instance and paste a PAT, then choose how inserted issue links and stub notes are shaped.",
+      );
 
     const urlSetting = new Setting(containerEl)
       .setName("JIRA base URL")
@@ -149,9 +240,10 @@ export class JiraBasesSettingTab extends PluginSettingTab {
     // Check if a token is already saved for the current base URL
     const hasToken = this.plugin.settings.baseUrl &&
       this.plugin.settings.encryptedTokens[this.plugin.settings.baseUrl];
-    const tokenDesc = hasToken
-      ? "✓ Token saved. Stored in your operating system's keychain, not in your vault."
-      : "Stored in your operating system's keychain, not in your vault.";
+    const storageDesc =
+      "Encrypted at rest using Electron safeStorage (key derived from your OS keychain). " +
+      "Ciphertext lives in this vault's plugin-data file, not in the OS keychain itself.";
+    const tokenDesc = hasToken ? `✓ Token saved. ${storageDesc}` : storageDesc;
 
     new Setting(containerEl)
       .setName("Personal Access Token")
@@ -199,6 +291,12 @@ export class JiraBasesSettingTab extends PluginSettingTab {
           new Notice("Token cleared.");
           this.display();
         }),
+      )
+      .addButton((btn) =>
+        btn
+          .setButtonText("Test")
+          .setTooltip("Calls /rest/api/2/myself and shows the result.")
+          .onClick(() => this.plugin.testConnection()),
       );
 
     new Setting(containerEl)
@@ -211,10 +309,10 @@ export class JiraBasesSettingTab extends PluginSettingTab {
           .onClick(() => this.plugin.testConnection()),
       );
 
-    new Setting(containerEl)
+    const linkTemplateSetting = new Setting(containerEl)
       .setName("Link template")
       .setDesc(
-        "Tokens: {key}, {summary}, {status}, {type}, {url}. Unknown tokens are left as-is.",
+        "Tokens: {key}, {summary}, {status}, {type}, {priority}, {assignee}, {reporter}, {labels}, {updated}, {url}. Unknown tokens are left as-is.",
       )
       .addText((text) =>
         text
@@ -223,6 +321,7 @@ export class JiraBasesSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.linkTemplate = value;
             await this.plugin.saveSettings();
+            this.renderTemplateWarning(this.linkTemplateFeedbackEl, value);
           }),
       )
       .addButton((btn) =>
@@ -232,6 +331,12 @@ export class JiraBasesSettingTab extends PluginSettingTab {
           this.display();
         }),
       );
+
+    this.linkTemplateFeedbackEl = linkTemplateSetting.descEl.createEl("div");
+    this.renderTemplateWarning(
+      this.linkTemplateFeedbackEl,
+      this.plugin.settings.linkTemplate,
+    );
 
     new Setting(containerEl)
       .setName("Stubs folder")
@@ -248,6 +353,11 @@ export class JiraBasesSettingTab extends PluginSettingTab {
       );
 
     containerEl.createEl("h3", { text: "Auto-lookup on type" });
+    containerEl
+      .createEl("p", { cls: "setting-item-description" })
+      .setText(
+        "Watches the active editor for bare JIRA keys matching the configured prefixes and turns them into links after a brief idle pause. Failed lookups are remembered for a while to avoid hammering the API.",
+      );
 
     new Setting(containerEl)
       .setName("Enable auto-lookup")
@@ -262,16 +372,18 @@ export class JiraBasesSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Idle delay (ms)")
-      .setDesc("How long to wait after the last keystroke before applying queued lookups.")
+      .setName("Idle delay (seconds)")
+      .setDesc(
+        "How long to wait after the last keystroke before applying queued lookups. Range 0.1–60 s (stored as ms internally).",
+      )
       .addText((t) =>
         t
-          .setPlaceholder("2000")
-          .setValue(String(this.plugin.settings.autoLookupIdleMs))
+          .setPlaceholder("2")
+          .setValue(formatMsAsSeconds(this.plugin.settings.autoLookupIdleMs))
           .onChange(async (v) => {
-            const n = parseInt(v, 10);
-            if (Number.isFinite(n) && n >= 100 && n <= 60000) {
-              this.plugin.settings.autoLookupIdleMs = n;
+            const ms = parseSecondsToMs(v);
+            if (ms !== null && ms >= 100 && ms <= 60000) {
+              this.plugin.settings.autoLookupIdleMs = ms;
               await this.plugin.saveSettings();
             }
           }),
@@ -306,13 +418,16 @@ export class JiraBasesSettingTab extends PluginSettingTab {
           });
       });
 
-    new Setting(containerEl)
+    const autoLookupTemplateSetting = new Setting(containerEl)
       .setName("Custom auto-lookup template")
       .setDesc(
         "Reflects the current style. Editing this flips the style to Custom. Tokens match Link template.",
       )
       .addText((t) => {
-        templateTextSetValue = (v) => t.setValue(v);
+        templateTextSetValue = (v) => {
+          t.setValue(v);
+          this.renderTemplateWarning(this.autoLookupTemplateFeedbackEl, v);
+        };
         t.setPlaceholder("[{key}]({url})")
           .setValue(this.plugin.settings.autoLookupTemplate)
           .onChange(async (v) => {
@@ -322,10 +437,18 @@ export class JiraBasesSettingTab extends PluginSettingTab {
               modeDropdownSetValue?.("custom");
             }
             await this.plugin.saveSettings();
+            this.renderTemplateWarning(this.autoLookupTemplateFeedbackEl, v);
           });
       });
 
-    new Setting(containerEl)
+    this.autoLookupTemplateFeedbackEl =
+      autoLookupTemplateSetting.descEl.createEl("div");
+    this.renderTemplateWarning(
+      this.autoLookupTemplateFeedbackEl,
+      this.plugin.settings.autoLookupTemplate,
+    );
+
+    const prefixSetting = new Setting(containerEl)
       .setName("Project prefixes")
       .setDesc(
         "Comma-separated JIRA project prefixes (e.g. ABC, PROJ). Enables bare-key matching for these prefixes. Leave empty to match only explicit issue links.",
@@ -335,13 +458,15 @@ export class JiraBasesSettingTab extends PluginSettingTab {
           .setPlaceholder("ABC, PROJ")
           .setValue(this.plugin.settings.projectPrefixes.join(", "))
           .onChange(async (value) => {
-            this.plugin.settings.projectPrefixes = value
-              .split(",")
-              .map((s) => s.trim().toUpperCase())
-              .filter((s) => /^[A-Z][A-Z0-9]+$/.test(s));
+            const { accepted, rejected } = splitProjectPrefixes(value);
+            this.plugin.settings.projectPrefixes = accepted;
             await this.plugin.saveSettings();
+            this.renderPrefixFeedback(rejected);
           }),
       );
+
+    this.prefixFeedbackEl = prefixSetting.descEl.createEl("div");
+    // No initial feedback — saved settings are by definition all accepted.
 
     new Setting(containerEl)
       .setName("Failed keys cache TTL (ms)")
@@ -382,6 +507,11 @@ export class JiraBasesSettingTab extends PluginSettingTab {
       );
 
     containerEl.createEl("h3", { text: "Auto-refresh stubs" });
+    containerEl
+      .createEl("p", { cls: "setting-item-description" })
+      .setText(
+        "Re-pulls every stub file in the configured folder on a timer, so JIRA-side changes appear in your vault without a manual sync.",
+      );
 
     new Setting(containerEl)
       .setName("Enable auto-refresh")
@@ -397,7 +527,9 @@ export class JiraBasesSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Refresh interval (minutes)")
-      .setDesc("How often to automatically refresh all stub files (minimum 1 minute).")
+      .setDesc(
+        "How often to automatically refresh all stub files (minimum 1 minute). Skipped while the Obsidian window is hidden — refresh resumes on the next scheduled tick after the window becomes visible again.",
+      )
       .addText((t) =>
         t
           .setPlaceholder("60")

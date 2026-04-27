@@ -245,6 +245,35 @@ export default class JiraBasesPlugin extends Plugin {
     }
   }
 
+  /**
+   * Tear down resources Obsidian doesn't reclaim automatically. The
+   * `registerInterval`-wrapped intervals ({@link setupAutoRefresh},
+   * {@link setupStatusBar}) and the status-bar item itself are tracked by the
+   * Plugin/Component base class and cleared on unload, so we only need to
+   * cancel the raw `setTimeout` driving the auto-lookup idle scheduler. We
+   * also defensively detach the status-bar item and clear our tracked
+   * interval ids — clearing an already-cleared id is a no-op and the
+   * defensive remove keeps behavior obvious to readers.
+   */
+  onunload(): void {
+    if (this.autoLookupScheduler) {
+      this.autoLookupScheduler.cancel();
+      this.autoLookupScheduler = null;
+    }
+    if (this.autoRefreshIntervalId !== null) {
+      window.clearInterval(this.autoRefreshIntervalId);
+      this.autoRefreshIntervalId = null;
+    }
+    if (this.statusBarUpdateIntervalId !== null) {
+      window.clearInterval(this.statusBarUpdateIntervalId);
+      this.statusBarUpdateIntervalId = null;
+    }
+    if (this.statusBarItem) {
+      this.statusBarItem.remove();
+      this.statusBarItem = null;
+    }
+  }
+
   private ensureAutoLookupScheduler() {
     if (this.autoLookupScheduler) return this.autoLookupScheduler;
     this.autoLookupScheduler = createIdleScheduler(

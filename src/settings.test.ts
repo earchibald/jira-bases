@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { JiraBasesSettingTab } from "./settings";
+import {
+  JiraBasesSettingTab,
+  formatMsAsSeconds,
+  parseSecondsToMs,
+  splitProjectPrefixes,
+} from "./settings";
 
 // Create a minimal mock to access the private validateUrl method
 function makeSettingTab() {
@@ -145,5 +150,91 @@ describe("URL Validation", () => {
     expect(result.valid).toBe(true);
     expect(result.message).toBe("✓ Valid URL");
     expect(result.fixed).toBeUndefined();
+  });
+});
+
+describe("formatMsAsSeconds", () => {
+  it("renders whole seconds without decimals", () => {
+    expect(formatMsAsSeconds(2000)).toBe("2");
+    expect(formatMsAsSeconds(60000)).toBe("60");
+    expect(formatMsAsSeconds(0)).toBe("0");
+  });
+
+  it("renders fractional seconds, trimming trailing zeros", () => {
+    expect(formatMsAsSeconds(1500)).toBe("1.5");
+    expect(formatMsAsSeconds(100)).toBe("0.1");
+    expect(formatMsAsSeconds(2500)).toBe("2.5");
+  });
+
+  it("returns empty string for non-finite input", () => {
+    expect(formatMsAsSeconds(Number.NaN)).toBe("");
+    expect(formatMsAsSeconds(Number.POSITIVE_INFINITY)).toBe("");
+  });
+});
+
+describe("parseSecondsToMs", () => {
+  it("parses integer seconds", () => {
+    expect(parseSecondsToMs("2")).toBe(2000);
+    expect(parseSecondsToMs("60")).toBe(60000);
+  });
+
+  it("parses fractional seconds", () => {
+    expect(parseSecondsToMs("1.5")).toBe(1500);
+    expect(parseSecondsToMs("0.1")).toBe(100);
+  });
+
+  it("trims whitespace", () => {
+    expect(parseSecondsToMs("  2  ")).toBe(2000);
+  });
+
+  it("returns null for invalid input", () => {
+    expect(parseSecondsToMs("")).toBeNull();
+    expect(parseSecondsToMs("   ")).toBeNull();
+    expect(parseSecondsToMs("abc")).toBeNull();
+    expect(parseSecondsToMs("-1")).toBeNull();
+  });
+});
+
+describe("splitProjectPrefixes", () => {
+  it("accepts uppercase prefixes", () => {
+    const r = splitProjectPrefixes("ABC, PROJ");
+    expect(r.accepted).toEqual(["ABC", "PROJ"]);
+    expect(r.rejected).toEqual([]);
+  });
+
+  it("uppercases lowercase entries", () => {
+    const r = splitProjectPrefixes("abc, proj");
+    expect(r.accepted).toEqual(["ABC", "PROJ"]);
+    expect(r.rejected).toEqual([]);
+  });
+
+  it("rejects single-letter prefixes", () => {
+    const r = splitProjectPrefixes("A, ABC");
+    expect(r.accepted).toEqual(["ABC"]);
+    expect(r.rejected).toEqual(["A"]);
+  });
+
+  it("rejects entries with punctuation", () => {
+    const r = splitProjectPrefixes("AB-C, OK");
+    expect(r.accepted).toEqual(["OK"]);
+    expect(r.rejected).toEqual(["AB-C"]);
+  });
+
+  it("preserves the original casing of rejected entries for user display", () => {
+    const r = splitProjectPrefixes("ab c");
+    expect(r.accepted).toEqual([]);
+    expect(r.rejected).toEqual(["ab c"]);
+  });
+
+  it("ignores empty entries", () => {
+    const r = splitProjectPrefixes("ABC, , ,PROJ");
+    expect(r.accepted).toEqual(["ABC", "PROJ"]);
+    expect(r.rejected).toEqual([]);
+  });
+
+  it("returns empty arrays for empty input", () => {
+    const r = splitProjectPrefixes("");
+    expect(r.accepted).toEqual([]);
+    expect(r.rejected).toEqual([]);
   });
 });
