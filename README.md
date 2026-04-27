@@ -20,7 +20,21 @@ Three flows you'll use most:
 
 ## Quick start
 
-### 1. Install (dev / from source)
+### 1. Install via BRAT (recommended)
+
+JIRA Bases is not yet in Obsidian's community-plugin catalog (see [Community catalog](#community-catalog)). The recommended install path is [BRAT](https://github.com/TfTHacker/obsidian42-brat) — *Beta Reviewer's Auto-update Tool* — which installs and auto-updates plugins straight from a GitHub release.
+
+1. Install **Obsidian42 - BRAT** from *Settings → Community plugins → Browse* (search "BRAT") and enable it.
+2. Open the command palette and run **BRAT: Add a beta plugin for testing** (or *Settings → BRAT → Beta Plugin List → Add Beta plugin*).
+3. Paste the repository URL: `https://github.com/earchibald/jira-bases`
+4. Leave the version selector on *Latest version* and click **Add Plugin**. BRAT downloads `manifest.json` + `main.js` from the most recent [GitHub release](https://github.com/earchibald/jira-bases/releases) into `<vault>/.obsidian/plugins/jira-bases/`.
+5. Enable **JIRA Bases** under *Settings → Community plugins*.
+
+BRAT will check for new releases on Obsidian startup (and on demand via *BRAT: Check for updates to all beta plugins*) and update jira-bases in place.
+
+### 1b. Install from source (for plugin developers)
+
+If you're contributing or running an unreleased build:
 
 ```bash
 git clone https://github.com/earchibald/jira-bases.git
@@ -183,3 +197,7 @@ To keep scope tight, this plugin explicitly **does not** support:
 - **Multi-account / multi-instance.** One JIRA base URL + token per vault.
 - **Live Preview decorations beyond hover preview.** No inline status pills, no in-editor issue summaries, no CodeMirror widgets — hover-only.
 - **Telemetry.** No analytics, no crash reporting, no phone-home.
+
+### Community catalog
+
+JIRA Bases is **not** in Obsidian's community-plugin catalog yet, and submission is deferred until past `1.0.0`. The catalog reaches every Obsidian user, and several of the [Non-goals](#non-goals) above (no Cloud, no OAuth, no mobile, no multi-account) are common requests from a general audience — submitting before the surface is stable invites scope-creep pressure on a deliberately narrow plugin. Plan: ship `1.0.0` once the command and frontmatter surface have held steady across at least one minor release, then submit. Until then, install via [BRAT](#1-install-via-brat-recommended).
