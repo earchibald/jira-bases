@@ -9,53 +9,26 @@ export interface IndexerDeps {
     prefixes: string[];
     stubsFolder: string;
   };
-  setReferences(
-    path: string,
-    keys: string[],
-    links: string[],
-  ): Promise<void>;
-}
-
-function asStringList(v: unknown): string[] {
-  if (!Array.isArray(v)) return [];
-  return v.filter((x): x is string => typeof x === "string");
-}
-
-function stubWikilink(path: string): string {
-  const withoutExt = path.replace(/\.md$/, "");
-  return `[[${withoutExt}]]`;
-}
-
-export async function rescanFile(
-  deps: IndexerDeps,
-  path: string,
-): Promise<void> {
-  const content = await deps.read(path);
-  if (content === null) return;
-  const { baseUrl, prefixes, stubsFolder } = deps.getSettings();
-  const { body } = readFrontmatter(content);
-  const found = [...findReferences(body, baseUrl, prefixes)].sort();
-  const stubs = await listStubPaths(deps, stubsFolder);
-  const links = found
-    .map((k) => stubs.get(k))
-    .filter((p): p is string => typeof p === "string")
-    .map(stubWikilink);
-  await deps.setReferences(path, found, links);
 }
 
 export async function collectAllKeys(
   deps: IndexerDeps,
   stubsFolder: string,
 ): Promise<Set<string>> {
+  const { baseUrl, prefixes } = deps.getSettings();
   const keys = new Set<string>();
+  // Fast path: nothing can ever match when both sources of key patterns are absent.
+  const normalizedBase = baseUrl.replace(/\/+$/, "");
+  const validPrefixes = prefixes.filter((p) => /^[A-Z][A-Z0-9]+$/.test(p));
+  if (normalizedBase.length === 0 && validPrefixes.length === 0) return keys;
   const notes = await deps.listNotes();
-  const prefix = stubsFolder.replace(/\/+$/, "") + "/";
+  const prefix = stubsFolder.replace(/^\/+|\/+$/, "") + "/";
   for (const path of notes) {
     if (path.startsWith(prefix)) continue;
     const content = await deps.read(path);
     if (content === null) continue;
-    const { frontmatter } = readFrontmatter(content);
-    for (const k of asStringList(frontmatter.jira_issues)) keys.add(k);
+    const { body } = readFrontmatter(content);
+    for (const k of findReferences(body, baseUrl, prefixes)) keys.add(k);
   }
   return keys;
 }
@@ -65,7 +38,7 @@ export async function listStubPaths(
   stubsFolder: string,
 ): Promise<Map<string, string>> {
   const map = new Map<string, string>();
-  const prefix = stubsFolder.replace(/\/+$/, "") + "/";
+  const prefix = stubsFolder.replace(/^\/+|\/+$/, "") + "/";
   const notes = await deps.listNotes();
   for (const path of notes) {
     if (!path.startsWith(prefix)) continue;

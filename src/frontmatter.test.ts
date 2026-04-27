@@ -32,6 +32,27 @@ body here
     expect(frontmatter).toEqual({});
     expect(body).toBe("hi\n");
   });
+
+  it("parses CRLF frontmatter and strips it from the body", () => {
+    const input = "---\r\nfoo: bar\r\nbaz: qux\r\n---\r\nbody text\r\n";
+    const { frontmatter, body } = readFrontmatter(input);
+    expect(frontmatter).toEqual({ foo: "bar", baz: "qux" });
+    expect(body).toBe("body text\r\n");
+  });
+
+  it("strips frontmatter block from body even when YAML is malformed", () => {
+    const input = `---\nnested: { deeply: { a: 1 } }\n---\nbody only\n`;
+    const { frontmatter, body } = readFrontmatter(input);
+    expect(frontmatter).toEqual({});
+    expect(body).toBe("body only\n");
+  });
+
+  it("handles frontmatter with no trailing newline after closing delimiter", () => {
+    const input = `---\ntitle: x\n---`;
+    const { frontmatter, body } = readFrontmatter(input);
+    expect(frontmatter).toEqual({ title: "x" });
+    expect(body).toBe("");
+  });
 });
 
 describe("writeFrontmatter", () => {

@@ -3,7 +3,6 @@ import {
   Notice,
   TFile,
   TFolder,
-  debounce,
   requestUrl,
 } from "obsidian";
 import { createSecretStore, SecretStore } from "./secret-store";
@@ -26,7 +25,6 @@ import {
   collectAllKeys,
   findOrphanedStubs,
   listStubPaths,
-  rescanFile,
   IndexerDeps,
 } from "./indexer";
 import { writeStub, VaultAdapter } from "./stub-writer";
@@ -99,7 +97,6 @@ function getSafeStorage() {
 export default class JiraBasesPlugin extends Plugin {
   settings: PluginSettings = DEFAULT_SETTINGS;
   secrets!: SecretStore;
-  private debouncedRescan: Map<string, () => void> = new Map();
   private issueCache = createIssueCache();
   private issueService!: IssueService;
   private autoLookupScheduler: ReturnType<typeof createIdleScheduler> | null = null;
@@ -143,21 +140,6 @@ export default class JiraBasesPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: "rescan-note",
-      name: "JIRA: Rescan this note",
-      checkCallback: (checking) => {
-        const file = this.app.workspace.getActiveFile();
-        if (!file || file.extension !== "md") return false;
-        if (!checking) {
-          rescanFile(this.makeIndexerDeps(), file.path).catch((e) =>
-            new Notice(`Rescan failed: ${(e as Error).message}`),
-          );
-        }
-        return true;
-      },
-    });
-
-    this.addCommand({
       id: "sync-issue-stubs",
       name: "JIRA: Sync issue stubs",
       callback: () => this.syncIssueStubs(),
@@ -168,16 +150,6 @@ export default class JiraBasesPlugin extends Plugin {
       name: "JIRA: Clean orphaned stubs",
       callback: () => this.cleanOrphanedStubs(),
     });
-
-    this.registerEvent(
-      this.app.vault.on("modify", (file) => {
-        if (!(file instanceof TFile)) return;
-        if (file.extension !== "md") return;
-        const stubPrefix = this.settings.stubsFolder.replace(/\/+$/, "") + "/";
-        if (file.path.startsWith(stubPrefix)) return;
-        this.scheduleRescan(file.path);
-      }),
-    );
 
     this.issueService = createIssueService(
       {
@@ -404,23 +376,6 @@ export default class JiraBasesPlugin extends Plugin {
     this.statusBarItem.setText(parts.join(" | "));
   }
 
-  private scheduleRescan(path: string): void {
-    let fn = this.debouncedRescan.get(path);
-    if (!fn) {
-      fn = debounce(
-        () => {
-          rescanFile(this.makeIndexerDeps(), path).catch((e) =>
-            console.warn("jira-bases rescan failed", path, e),
-          );
-        },
-        500,
-        true,
-      );
-      this.debouncedRescan.set(path, fn);
-    }
-    fn();
-  }
-
   private makeIndexerDeps(): IndexerDeps {
     return {
       read: async (path) => {
@@ -439,29 +394,6 @@ export default class JiraBasesPlugin extends Plugin {
         prefixes: this.settings.projectPrefixes,
         stubsFolder: this.settings.stubsFolder,
       }),
-      setReferences: async (path, keys, links) => {
-        const f = this.app.vault.getAbstractFileByPath(path);
-        if (!(f instanceof TFile)) return;
-        await this.app.fileManager.processFrontMatter(f, (fm) => {
-          const existingKeys = Array.isArray(fm.jira_issues)
-            ? fm.jira_issues.filter(
-                (x: unknown): x is string => typeof x === "string",
-              )
-            : [];
-          const existingLinks = Array.isArray(fm.jira_links)
-            ? fm.jira_links.filter(
-                (x: unknown): x is string => typeof x === "string",
-              )
-            : [];
-          const keysSame = sameStringSet(existingKeys, keys);
-          const linksSame = sameStringSet(existingLinks, links);
-          if (keysSame && linksSame) return;
-          if (keys.length === 0) delete fm.jira_issues;
-          else fm.jira_issues = keys;
-          if (links.length === 0) delete fm.jira_links;
-          else fm.jira_links = links;
-        });
-      },
     };
   }
 
@@ -707,15 +639,6 @@ export default class JiraBasesPlugin extends Plugin {
         console.warn(`jira-bases: ${key} — write failed`, e);
       }
     }
-    if (synced > 0) {
-      const prefix = this.settings.stubsFolder.replace(/\/+$/, "") + "/";
-      for (const path of await deps.listNotes()) {
-        if (path.startsWith(prefix)) continue;
-        const content = await deps.read(path);
-        if (content === null) continue;
-        if (content.includes("jira_issues")) await rescanFile(deps, path);
-      }
-    }
     this.lastSyncTimestamp = Date.now();
     this.updateStatusBar();
     if (failures.length === 0) {
@@ -784,14 +707,6 @@ export default class JiraBasesPlugin extends Plugin {
     });
     modal.open();
   }
-}
-
-function sameStringSet(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  const sa = [...a].sort();
-  const sb = [...b].sort();
-  for (let i = 0; i < sa.length; i++) if (sa[i] !== sb[i]) return false;
-  return true;
 }
 
 function errorMessage(err: JiraError): string {
