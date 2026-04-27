@@ -111,4 +111,19 @@ describe("OverwriteModal", () => {
     modal.onClose();
     expect(modal.contentEl.children.length).toBe(0);
   });
+
+  it("calls onCancel when closed without clicking a button (e.g., ESC key)", () => {
+    const { modal, onCancel } = makeModal();
+    modal.onOpen();
+    modal.onClose();
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onCancel only once even if onClose is invoked twice", () => {
+    const { modal, onCancel } = makeModal();
+    modal.onOpen();
+    modal.onClose();
+    modal.onClose();
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
 });

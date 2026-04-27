@@ -7,6 +7,8 @@ export interface OverwriteModalCallbacks {
 }
 
 export class OverwriteModal extends Modal {
+  private resolved = false;
+
   constructor(
     app: App,
     private existingPath: string,
@@ -32,12 +34,14 @@ export class OverwriteModal extends Modal {
     new Setting(contentEl)
       .addButton((btn) =>
         btn.setButtonText("Cancel").onClick(() => {
+          this.resolved = true;
           this.close();
           this.callbacks.onCancel?.();
         }),
       )
       .addButton((btn) =>
         btn.setButtonText("Overwrite").onClick(() => {
+          this.resolved = true;
           this.close();
           this.callbacks.onOverwrite();
         }),
@@ -47,6 +51,7 @@ export class OverwriteModal extends Modal {
           .setButtonText("Save as new")
           .setCta()
           .onClick(() => {
+            this.resolved = true;
             this.close();
             this.callbacks.onSaveAsNew();
           }),
@@ -54,6 +59,10 @@ export class OverwriteModal extends Modal {
   }
 
   onClose(): void {
+    if (!this.resolved) {
+      this.resolved = true;
+      this.callbacks.onCancel?.();
+    }
     this.contentEl.empty();
   }
 }
