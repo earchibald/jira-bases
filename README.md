@@ -119,7 +119,7 @@ Stub notes inside the *Stubs folder* are managed by the plugin. The body has a `
 
 - `jira_key`, `jira_summary`, `jira_status`, `jira_type`, `jira_priority`
 - `jira_assignee`, `jira_reporter`, `jira_labels`, `jira_updated`
-- `jira_url`
+- `jira_url`, `jira_synced_at`
 
 **Notes you authored are never modified.** Even if a note's body references a JIRA issue, the plugin will not write `jira_*` fields onto it. To filter a Bases view by issue references, scope the view to the stubs folder (`file.inFolder("JIRA")`).
 
