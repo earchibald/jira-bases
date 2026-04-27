@@ -2,6 +2,12 @@
 
 All notable changes to **JIRA Bases** are recorded here. Releases follow [semver](https://semver.org/) and are auto-published to GitHub Releases when `manifest.json` / `package.json` versions change on `main`.
 
+## 1.0.1 — Settings URL field bug fixes (JB-15)
+
+- **Fix — focus stealing.** The JIRA base URL field in Settings no longer rebuilds the entire settings tab on each keystroke, so typing is uninterrupted instead of one-letter-at-a-time.
+- **Fix — `https://` double-injection.** URL validation and the `https://` auto-fix are now debounced (~600 ms after the last keystroke), so a fix never races with in-flight typing and the prefix is applied at most once per pause.
+- Internals: validation message rendering and timer cleanup extracted into helpers; existing URL validation regex and behavior preserved.
+
 ## 1.0.0 — Stable release (JB-13)
 
 Promotes the plugin out of the 0.x pre-stable line. No new behavior vs 0.10.0 — the major bump signals a stability commitment for the public surface (commands, settings, stub frontmatter, link templates, `.base` generator, hover preview, sync). The polish arc that landed across 0.6.3 → 0.10.0 is now considered the 1.0 baseline:

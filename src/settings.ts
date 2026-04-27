@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, Notice } from "obsidian";
+import { App, PluginSettingTab, Setting, Notice, TextComponent } from "obsidian";
 import type JiraBasesPlugin from "./main";
 import { findUnknownTemplateTokens } from "./template";
 
@@ -94,12 +94,20 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   autoRefreshOnStartup: false,
 };
 
+// Idle delay before the URL field re-runs validation and applies the
+// `https://` / trailing-slash auto-fix. Long enough that a user typing a
+// host like "jira.example.com" finishes before the validator sees a
+// half-edited protocol prefix; short enough that a paste or genuine pause
+// still gets feedback within a beat. See JB-15.
+export const URL_VALIDATION_DEBOUNCE_MS = 600;
+
 export class JiraBasesSettingTab extends PluginSettingTab {
   private pendingToken = "";
   private urlValidationEl: HTMLElement | null = null;
   private prefixFeedbackEl: HTMLElement | null = null;
   private linkTemplateFeedbackEl: HTMLElement | null = null;
   private autoLookupTemplateFeedbackEl: HTMLElement | null = null;
+  private urlValidationTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(app: App, private plugin: JiraBasesPlugin) {
     super(app, plugin);
@@ -130,6 +138,55 @@ export class JiraBasesSettingTab extends PluginSettingTab {
       text: `⚠️ Ignored: ${rejected.join(", ")}. Prefixes must be 2+ characters, start with a letter, and contain only letters/digits.`,
       cls: "setting-item-description mod-warning",
     });
+  }
+
+  /**
+   * Debounced trigger for URL validation + auto-fix. Resets on every
+   * keystroke; only the latest value is validated. Public for tests.
+   */
+  scheduleUrlValidation(text: TextComponent): void {
+    if (this.urlValidationTimer !== null) {
+      clearTimeout(this.urlValidationTimer);
+    }
+    this.urlValidationTimer = setTimeout(() => {
+      this.urlValidationTimer = null;
+      void this.runUrlValidation(text);
+    }, URL_VALIDATION_DEBOUNCE_MS);
+  }
+
+  private async runUrlValidation(text: TextComponent): Promise<void> {
+    const current = text.getValue();
+    const validation = this.validateUrl(current);
+
+    if (validation.fixed && validation.fixed !== current) {
+      this.plugin.settings.baseUrl = validation.fixed;
+      text.setValue(validation.fixed);
+      await this.plugin.saveSettings();
+    }
+
+    this.renderUrlValidationMessage(validation);
+  }
+
+  private renderUrlValidationMessage(validation: {
+    valid: boolean;
+    message: string;
+  }): void {
+    if (!this.urlValidationEl) return;
+    this.urlValidationEl.empty();
+    this.urlValidationEl.createEl("div", {
+      text: validation.message,
+      cls: validation.valid
+        ? "setting-item-description"
+        : "setting-item-description mod-warning",
+    });
+  }
+
+  hide(): void {
+    if (this.urlValidationTimer !== null) {
+      clearTimeout(this.urlValidationTimer);
+      this.urlValidationTimer = null;
+    }
+    super.hide?.();
   }
 
   private validateUrl(url: string): { valid: boolean; message: string; fixed?: string } {
@@ -199,42 +256,24 @@ export class JiraBasesSettingTab extends PluginSettingTab {
         .setPlaceholder("https://jira.example.com")
         .setValue(this.plugin.settings.baseUrl)
         .onChange(async (value) => {
-          const validation = this.validateUrl(value);
-
-          // Auto-apply fix if available
-          if (validation.fixed) {
-            this.plugin.settings.baseUrl = validation.fixed;
-            text.setValue(validation.fixed);
-          } else {
-            this.plugin.settings.baseUrl = value.trim();
-          }
-
+          // Persist what the user typed verbatim so the value isn't lost if
+          // they close the settings tab before debounce fires. The
+          // validator and auto-fix run on a timer (see
+          // scheduleUrlValidation) — running them here used to call
+          // this.display() on every keystroke, which rebuilt the input
+          // element and stole focus, and let mid-edit protocol fragments
+          // (e.g. "ttps://jira.com") get a second "https://" prepended.
+          this.plugin.settings.baseUrl = value.trim();
           await this.plugin.saveSettings();
-
-          // Update validation message
-          if (this.urlValidationEl) {
-            this.urlValidationEl.empty();
-            this.urlValidationEl.createEl("div", {
-              text: validation.message,
-              cls: validation.valid ? "setting-item-description" : "setting-item-description mod-warning",
-            });
-          }
-
-          // Refresh the token section if URL changed
-          this.display();
+          this.scheduleUrlValidation(text);
         }),
     );
 
     // Show initial validation state if URL exists
     if (this.plugin.settings.baseUrl) {
-      const validation = this.validateUrl(this.plugin.settings.baseUrl);
-      if (this.urlValidationEl) {
-        this.urlValidationEl.empty();
-        this.urlValidationEl.createEl("div", {
-          text: validation.message,
-          cls: validation.valid ? "setting-item-description" : "setting-item-description mod-warning",
-        });
-      }
+      this.renderUrlValidationMessage(
+        this.validateUrl(this.plugin.settings.baseUrl),
+      );
     }
 
     // Check if a token is already saved for the current base URL
