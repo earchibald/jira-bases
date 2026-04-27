@@ -15,16 +15,23 @@ export async function collectAllKeys(
   deps: IndexerDeps,
   stubsFolder: string,
 ): Promise<Set<string>> {
+  const notes = await deps.listNotes();
+  return collectKeysInPaths(deps, notes, stubsFolder);
+}
+
+export async function collectKeysInPaths(
+  deps: IndexerDeps,
+  paths: Iterable<string>,
+  stubsFolder: string,
+): Promise<Set<string>> {
   const { baseUrl, prefixes } = deps.getSettings();
   const keys = new Set<string>();
-  // Fast path: nothing can ever match when both sources of key patterns are absent.
   const normalizedBase = baseUrl.replace(/\/+$/, "");
   const validPrefixes = prefixes.filter((p) => /^[A-Z][A-Z0-9]+$/.test(p));
   if (normalizedBase.length === 0 && validPrefixes.length === 0) return keys;
-  const notes = await deps.listNotes();
-  const prefix = stubsFolder.replace(/^\/+|\/+$/, "") + "/";
-  for (const path of notes) {
-    if (path.startsWith(prefix)) continue;
+  const stubPrefix = stubsFolder.replace(/^\/+|\/+$/, "") + "/";
+  for (const path of paths) {
+    if (path.startsWith(stubPrefix)) continue;
     const content = await deps.read(path);
     if (content === null) continue;
     const { body } = readFrontmatter(content);

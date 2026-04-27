@@ -25,33 +25,47 @@ export class PluginSettingTab {
   display() {}
 }
 
+function augmentElement(el: any): any {
+  el.empty = function () {
+    this.innerHTML = "";
+  };
+  el.setText = function (text: string) {
+    this.textContent = text;
+  };
+  el.addClass = function (cls: string) {
+    this.classList.add(cls);
+  };
+  el.createEl = function (tag: string, options?: any) {
+    const child = document.createElement(tag);
+    if (options?.text) {
+      child.textContent = options.text;
+    }
+    if (options?.cls) {
+      const classes = Array.isArray(options.cls) ? options.cls : [options.cls];
+      for (const c of classes) child.classList.add(c);
+    }
+    augmentElement(child);
+    this.appendChild(child);
+    return child;
+  };
+  el.createDiv = function (options?: any) {
+    return el.createEl("div", options);
+  };
+  return el;
+}
+
 export class Modal {
   app: unknown;
-  contentEl: HTMLElement & { empty: () => void; createEl: (tag: string, options?: any) => HTMLElement };
+  contentEl: HTMLElement & {
+    empty: () => void;
+    createEl: (tag: string, options?: any) => HTMLElement;
+  };
   titleEl: HTMLElement & { setText: (text: string) => void };
 
   constructor(app: unknown) {
     this.app = app;
-
-    const contentEl = document.createElement("div") as any;
-    contentEl.empty = function () {
-      this.innerHTML = "";
-    };
-    contentEl.createEl = function (tag: string, options?: any) {
-      const el = document.createElement(tag);
-      if (options?.text) {
-        el.textContent = options.text;
-      }
-      this.appendChild(el);
-      return el;
-    };
-    this.contentEl = contentEl;
-
-    const titleEl = document.createElement("div") as any;
-    titleEl.setText = function (text: string) {
-      this.textContent = text;
-    };
-    this.titleEl = titleEl;
+    this.contentEl = augmentElement(document.createElement("div"));
+    this.titleEl = augmentElement(document.createElement("div"));
   }
 
   open() {}
