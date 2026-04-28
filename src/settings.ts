@@ -1,8 +1,19 @@
 import { App, PluginSettingTab, Setting, Notice, TextComponent } from "obsidian";
 import type JiraBasesPlugin from "./main";
+import type { JiraError } from "./jira-client";
 import { findUnknownTemplateTokens } from "./template";
 
 export type AutoLookupMode = "minimal" | "primary" | "custom";
+
+export type TokenVerificationState = "verified" | "pending" | "failed";
+
+export interface TokenVerification {
+  state: TokenVerificationState;
+  at: number;
+  baseUrl: string;
+  httpStatus?: number;
+  detail?: string;
+}
 
 const PROJECT_PREFIX_RE = /^[A-Z][A-Z0-9]+$/;
 
@@ -72,6 +83,7 @@ export interface PluginSettings {
   autoRefreshEnabled: boolean;
   autoRefreshIntervalMinutes: number;
   autoRefreshOnStartup: boolean;
+  lastTokenVerification: TokenVerification | null;
 }
 
 export const DEFAULT_LINK_TEMPLATE = "[{key} {summary}]({url})";
@@ -92,7 +104,88 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   autoRefreshEnabled: false,
   autoRefreshIntervalMinutes: 60,
   autoRefreshOnStartup: false,
+  lastTokenVerification: null,
 };
+
+/**
+ * Map a getCurrentUser() failure onto a TokenVerification record so the
+ * settings tab can render an honest status:
+ * - 4xx (auth or other) → failed: the token is the most likely culprit.
+ * - 5xx → pending: JIRA is sick, we can't conclude anything about the PAT.
+ * - network/timeout/DNS → pending: same — host unreachable is JIRA-side.
+ * - parse → pending: 200 OK but body shape was wrong; inconclusive.
+ * - no-token → null: never reached here in practice (testConnection bails
+ *   on empty baseUrl, and getCurrentUser checks for a token before
+ *   requesting), but null lets callers skip persisting a pseudo-state.
+ */
+export function classifyVerificationFromError(
+  err: JiraError,
+  baseUrl: string,
+  now: number = Date.now(),
+): TokenVerification | null {
+  switch (err.kind) {
+    case "no-token":
+      return null;
+    case "auth":
+      return { state: "failed", at: now, baseUrl, httpStatus: err.status };
+    case "http":
+      if (err.status >= 400 && err.status < 500) {
+        return { state: "failed", at: now, baseUrl, httpStatus: err.status };
+      }
+      return {
+        state: "pending",
+        at: now,
+        baseUrl,
+        httpStatus: err.status,
+        detail: `HTTP ${err.status}`,
+      };
+    case "network":
+      return { state: "pending", at: now, baseUrl, detail: "network error" };
+    case "parse":
+      return { state: "pending", at: now, baseUrl, detail: "unexpected response" };
+    case "not-found":
+      return { state: "pending", at: now, baseUrl, detail: "endpoint not found" };
+  }
+}
+
+/**
+ * Render the dynamic status line for the saved-token row from a cached
+ * verification record. Returns null when there's nothing meaningful to
+ * surface (no token, or the verification is for a different base URL — see
+ * URL-drift fallback in the JB-16 plan). Pure for testability.
+ */
+export function renderTokenStatus(opts: {
+  hasToken: boolean;
+  baseUrl: string;
+  verification: TokenVerification | null;
+}): { emoji: string; text: string } | null {
+  if (!opts.hasToken) return null;
+  const v = opts.verification;
+  if (!v || v.baseUrl !== opts.baseUrl) {
+    // Either nothing recorded yet, or recorded against a different host —
+    // don't pretend we know the current token's health.
+    return { emoji: "✓", text: "Token saved." };
+  }
+  switch (v.state) {
+    case "verified":
+      return { emoji: "✓", text: "Saved token verified" };
+    case "pending":
+      return {
+        emoji: "⏳",
+        text: v.detail
+          ? `Saved token — pending test (${v.detail})`
+          : "Saved token — pending test",
+      };
+    case "failed":
+      return {
+        emoji: "❌",
+        text:
+          typeof v.httpStatus === "number"
+            ? `Saved token failed (HTTP ${v.httpStatus})`
+            : "Saved token failed",
+      };
+  }
+}
 
 // Idle delay before the URL field re-runs validation and applies the
 // `https://` / trailing-slash auto-fix. Long enough that a user typing a
@@ -108,6 +201,7 @@ export class JiraBasesSettingTab extends PluginSettingTab {
   private linkTemplateFeedbackEl: HTMLElement | null = null;
   private autoLookupTemplateFeedbackEl: HTMLElement | null = null;
   private urlValidationTimer: ReturnType<typeof setTimeout> | null = null;
+  private tokenDescEl: HTMLElement | null = null;
 
   constructor(app: App, private plugin: JiraBasesPlugin) {
     super(app, plugin);
@@ -127,6 +221,44 @@ export class JiraBasesSettingTab extends PluginSettingTab {
         .join(", ")}. Left as-is when rendered — check for typos.`,
       cls: "setting-item-description mod-warning",
     });
+  }
+
+  /**
+   * Re-render the PAT row's description in place from the current settings
+   * state. We update only this element rather than calling display() so a
+   * mid-edit URL field (JB-15 debounce) doesn't lose focus on each save/test.
+   *
+   * Uses standard DOM APIs (not Obsidian's `el.empty()`/`createEl` helpers)
+   * so this method is exercisable under jsdom in unit tests.
+   */
+  private renderTokenDesc(): void {
+    const el = this.tokenDescEl;
+    if (!el) return;
+    el.replaceChildren();
+    const baseUrl = this.plugin.settings.baseUrl;
+    const hasToken = !!(
+      baseUrl && this.plugin.settings.encryptedTokens[baseUrl]
+    );
+    const status = renderTokenStatus({
+      hasToken,
+      baseUrl,
+      verification: this.plugin.settings.lastTokenVerification,
+    });
+    if (status) {
+      const statusEl = el.ownerDocument.createElement("div");
+      statusEl.className =
+        status.emoji === "❌"
+          ? "setting-item-description mod-warning"
+          : "setting-item-description";
+      statusEl.textContent = `${status.emoji} ${status.text}`;
+      el.appendChild(statusEl);
+    }
+    const storageEl = el.ownerDocument.createElement("div");
+    storageEl.className = "setting-item-description";
+    storageEl.textContent =
+      "Encrypted at rest using Electron safeStorage (key derived from your OS keychain). " +
+      "Ciphertext lives in this vault's plugin-data file, not in the OS keychain itself.";
+    el.appendChild(storageEl);
   }
 
   private renderPrefixFeedback(rejected: string[]): void {
@@ -306,17 +438,8 @@ export class JiraBasesSettingTab extends PluginSettingTab {
       );
     }
 
-    // Check if a token is already saved for the current base URL
-    const hasToken = this.plugin.settings.baseUrl &&
-      this.plugin.settings.encryptedTokens[this.plugin.settings.baseUrl];
-    const storageDesc =
-      "Encrypted at rest using Electron safeStorage (key derived from your OS keychain). " +
-      "Ciphertext lives in this vault's plugin-data file, not in the OS keychain itself.";
-    const tokenDesc = hasToken ? `✓ Token saved. ${storageDesc}` : storageDesc;
-
-    new Setting(containerEl)
+    const tokenSetting = new Setting(containerEl)
       .setName("Personal Access Token")
-      .setDesc(tokenDesc)
       .addText((text) => {
         text.inputEl.type = "password";
         text
@@ -343,7 +466,12 @@ export class JiraBasesSettingTab extends PluginSettingTab {
               await this.plugin.secrets.set(url, this.pendingToken);
               this.pendingToken = "";
               new Notice("Token saved (encrypted).");
-              this.display();
+              // Auto-test the freshly saved token. testConnection() persists
+              // lastTokenVerification, so we just re-render the description
+              // in place after it resolves (no display() rebuild — keeps the
+              // URL field's focus + JB-15 debounce timer intact).
+              await this.plugin.testConnection();
+              this.renderTokenDesc();
             } catch (e) {
               new Notice((e as Error).message);
             }
@@ -357,6 +485,11 @@ export class JiraBasesSettingTab extends PluginSettingTab {
             return;
           }
           await this.plugin.secrets.delete(url);
+          // Drop any stale verification — we no longer have a token to claim
+          // anything about. Otherwise the next render would still show a
+          // green ✓ next to an empty row.
+          this.plugin.settings.lastTokenVerification = null;
+          await this.plugin.saveSettings();
           new Notice("Token cleared.");
           this.display();
         }),
@@ -365,18 +498,17 @@ export class JiraBasesSettingTab extends PluginSettingTab {
         btn
           .setButtonText("Test")
           .setTooltip("Calls /rest/api/2/myself and shows the result.")
-          .onClick(() => this.plugin.testConnection()),
+          .onClick(async () => {
+            await this.plugin.testConnection();
+            this.renderTokenDesc();
+          }),
       );
 
-    new Setting(containerEl)
-      .setName("Test connection")
-      .setDesc("Calls /rest/api/2/myself and shows the result.")
-      .addButton((btn) =>
-        btn
-          .setButtonText("Test")
-          .setCta()
-          .onClick(() => this.plugin.testConnection()),
-      );
+    // Render the dynamic description (token health + storage explainer)
+    // directly into the setting's descEl. Cached only — we never make a
+    // network call on settings tab open (JB-16 spec).
+    this.tokenDescEl = tokenSetting.descEl;
+    this.renderTokenDesc();
 
     const linkTemplateSetting = new Setting(containerEl)
       .setName("Link template")

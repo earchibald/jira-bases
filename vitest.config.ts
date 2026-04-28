@@ -13,6 +13,7 @@ export default defineConfig({
     environmentMatchGlobs: [
       ["src/**/issue-preview-view.test.ts", "jsdom"],
       ["src/**/base-generator-modal.test.ts", "jsdom"],
+      ["src/**/settings.test.ts", "jsdom"],
     ],
   },
 });

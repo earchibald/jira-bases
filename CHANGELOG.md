@@ -2,6 +2,17 @@
 
 All notable changes to **JIRA Bases** are recorded here. Releases follow [semver](https://semver.org/) and are auto-published to GitHub Releases when `manifest.json` / `package.json` versions change on `main`.
 
+## 1.1.0 — Test connection dedupe + dynamic token status (JB-16)
+
+- **Dedupe.** The standalone "Test connection" setting row is gone; the inline `Test` button next to Save/Clear (added in JB-8) is the single entry point. Behavior is unchanged — same `/rest/api/2/myself` call, same Notice text.
+- **Auto-test on Save token.** Saving a PAT now runs an implicit connection test against the saved token without a separate click, so "Save token. Test." collapses into one action.
+- **Dynamic token status on the PAT row.** The static `✓ Token saved.` description is replaced by a status that reflects the most recent verification:
+  - `✓ Saved token verified` — last test returned 2xx.
+  - `⏳ Saved token — pending test` — JIRA host unreachable (network / timeout / DNS / 5xx) so the PAT couldn't be conclusively verified.
+  - `❌ Saved token failed (HTTP <status>)` — last test returned 4xx (most often 401/403).
+- **Persisted across reloads.** The verification record (state, timestamp, base URL it was tested against, optional HTTP status) lives on `PluginSettings.lastTokenVerification`. Settings tab open uses the cached record only — no implicit network call. A base-URL change invalidates the cached status until the next deliberate Save/Test.
+- **Plays nicely with JB-15.** Save and Test now update the description in place instead of rebuilding the settings tab, so a mid-edit URL field keeps focus and its debounced auto-fix timer is undisturbed.
+
 ## 1.0.1 — Settings URL field bug fixes (JB-15)
 
 - **Fix — focus stealing.** The JIRA base URL field in Settings no longer rebuilds the entire settings tab on each keystroke, so typing is uninterrupted instead of one-letter-at-a-time.

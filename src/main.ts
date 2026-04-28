@@ -12,10 +12,12 @@ import type { IssueDetails } from "./jira-fields";
 import { renderTemplate, escapeLinkText, escapeLinkUrl } from "./template";
 import { IssueSuggestModal } from "./issue-suggest-modal";
 import {
+  classifyVerificationFromError,
   DEFAULT_SETTINGS,
   JiraBasesSettingTab,
   MINIMAL_LINK_TEMPLATE,
   PluginSettings,
+  TokenVerification,
 } from "./settings";
 import {
   createIdleScheduler,
@@ -778,17 +780,26 @@ export default class JiraBasesPlugin extends Plugin {
     modal.open();
   }
 
-  async testConnection(): Promise<void> {
+  async testConnection(): Promise<TokenVerification | null> {
     if (!this.settings.baseUrl) {
       new Notice("Set your JIRA base URL in plugin settings.");
-      return;
+      return null;
     }
+    const baseUrl = this.settings.baseUrl;
     const result = await this.makeClient().getCurrentUser();
+    let verification: TokenVerification | null;
     if (result.ok) {
       new Notice(`Connected as ${result.value.displayName}.`);
+      verification = { state: "verified", at: Date.now(), baseUrl };
     } else {
       new Notice(errorMessage(result.error));
+      verification = classifyVerificationFromError(result.error, baseUrl);
     }
+    if (verification) {
+      this.settings.lastTokenVerification = verification;
+      await this.saveSettings();
+    }
+    return verification;
   }
 
   async syncIssueStubs(): Promise<void> {
