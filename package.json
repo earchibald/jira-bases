@@ -1,6 +1,6 @@
 {
   "name": "jira-bases",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Obsidian plugin for JIRA Data Center: smart links, Bases metadata, issue lookup.",
   "main": "main.js",
   "scripts": {
