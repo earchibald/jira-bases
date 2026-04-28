@@ -8,11 +8,12 @@ An Obsidian plugin that turns your JIRA issues into first-class Bases data — s
 
 JIRA Bases keeps a folder of read-only **stub notes** in your vault — one note per JIRA issue you reference — with managed frontmatter (`jira_status`, `jira_priority`, `jira_assignee`, …). Pair it with [Obsidian Bases](https://help.obsidian.md/bases) and you get a sortable, filterable table of your JIRA issues that lives entirely in your vault. The plugin also inserts smart links, previews issues on hover, and (optionally) replaces bare issue keys you type with proper links.
 
-Three flows you'll use most:
+Four flows you'll use most:
 
 1. **Insert a JIRA link** — fuzzy-pick an issue, paste a configurable link template.
 2. **Sync stubs and view them in Bases** — scans your vault for JIRA references, fetches fields, writes one stub per issue, then renders them through a generated `.base` view.
 3. **Hover or look up an issue** — preview summary, status, type, priority, assignee, reporter, and last-updated time without leaving the editor.
+4. **Auto-lookup as you type (passive)** — type bare keys like `ABC-123` in any note and the plugin replaces them with proper links after a brief idle pause. The fully passive companion to flow #1 — no palette, no selection, no thought required. See [Auto-lookup on type](#auto-lookup-on-type).
 
 <!-- TODO: capture docs/screenshots/insert-link.gif — Insert issue link flow -->
 <!-- TODO: capture docs/screenshots/sync-and-base.gif — Sync stubs + Bases view -->
@@ -65,6 +66,16 @@ Open the command palette and run **JIRA: Insert issue link**. Type any part of t
 
 To wrap an existing selection, select the text first, then run **JIRA: Insert issue link** — the suggestion modal will use your selection as the seed search.
 
+### 3a. Enable auto-lookup as you type (optional, passive)
+
+If you write notes that mention JIRA issues by key (`ABC-123` in a meeting note, a daily log, a roadmap doc), turn on **Auto-lookup on type** and skip the palette entirely.
+
+1. *Settings → JIRA Bases → **Project prefixes*** — add the prefixes you actually use, e.g. `ABC, PROJ`. Auto-lookup only fires for keys whose prefix is on this list, so the plugin never touches `TODO-1` or `RFC-7` style strings.
+2. *Settings → **Auto-lookup on type*** — flip on.
+3. Type as normal. After ~2 s of idle (configurable), every bare key on the visible note that resolves in JIRA is replaced with a markdown link. Keys that fail to resolve get cached for 10 minutes so a typo doesn't keep re-querying.
+
+Auto-lookup is the passive flow: you don't think about it, you just see typo'd `ABC-123`s become `[ABC-123 Sample Summary](https://jira.example.com/browse/ABC-123)` a moment after you stop typing. See [Auto-lookup on type](#auto-lookup-on-type) for what it skips, what link style it uses, and how to tune the cache.
+
 ### 4. Sync stubs and view them in Bases
 
 1. Configure *Project prefixes* in settings (e.g. `ABC, PROJ`) so the scanner recognises bare keys.
@@ -103,12 +114,38 @@ For one-off lookups without inserting a link, run **JIRA: Look up issue…** and
 | **Stubs folder** | `JIRA` | Where stub notes are written, vault-relative. |
 | **Auto-lookup on type** | off | When enabled, bare keys you type (matching configured prefixes) are replaced with a link after an idle pause. |
 | **Auto-lookup link style** | Minimal | `Minimal` = `[KEY](url)`. `Primary` = the *Link template* above. `Custom` = a separate template you control. |
-| **Idle delay (ms)** | `2000` | How long after the last keystroke before queued lookups apply. |
+| **Idle delay (seconds)** | `2` | How long after the last keystroke before queued lookups apply. Range `0.1`–`60` s. |
 | **Project prefixes** | _(empty)_ | Comma-separated, e.g. `ABC, PROJ`. Required for bare-key matching; explicit links work without it. |
-| **Failed keys cache TTL / max size** | `600000` ms / `500` | Suppresses repeat API calls for keys that don't resolve. |
+| **Failed keys cache TTL** | `600000` ms (10 min) | Suppresses repeat API calls for keys that don't resolve, for this long. |
+| **Failed keys max cache size** | `500` | Maximum number of failed keys remembered. Older entries are evicted past this limit. |
 | **Auto-refresh stubs** | off | Periodic re-fetch of all stubs. |
 | **Refresh interval (minutes)** | `60` | Used when auto-refresh is enabled. Minimum 1 minute. |
 | **Refresh on startup** | off | Run a sync when Obsidian launches. |
+
+### Auto-lookup on type
+
+Auto-lookup is a passive workflow: enable it once, configure your project prefixes, and forget about it. Bare keys you type in any note's body are turned into markdown links after a short idle pause, without you reaching for the command palette.
+
+**What it does.** When **Auto-lookup on type** is enabled, every editor change bumps an idle timer (default 2 seconds, set via *Idle delay*). When the timer fires, the plugin scans the active note's body for bare JIRA keys matching your *Project prefixes*, fetches the ones it doesn't already know, and replaces them with links rendered through the configured link template.
+
+**What it deliberately skips:**
+
+- **Frontmatter.** Anything between the leading `---` fences is off-limits — rewriting bare keys in YAML would corrupt it.
+- **Keys already inside a markdown link or wikilink.** `[ABC-123](…)`, `[[ABC-123]]`, or links whose visible text is a key are left alone.
+- **The key under your cursor** at scan time. The plugin assumes a key your cursor is touching is one you're still typing, so it waits until you move on.
+- **Keys that recently failed to resolve.** A *Failed keys cache* (default 500 entries, 10-minute TTL) suppresses repeat lookups for keys that returned 404, expired auth, or any other error — so a typo like `ABC-9999999` doesn't keep hammering JIRA every time the timer fires.
+
+**Three link styles.** Set via **Auto-lookup link style**:
+
+- **Minimal** (default) — `[ABC-123](https://jira.example.com/browse/ABC-123)`. Quiet, doesn't visually disrupt prose.
+- **Use primary template** — same as your **Link template** above. Useful if you want auto-linked keys to read identically to keys you inserted via the palette (e.g. with the summary inline).
+- **Custom** — a separate template just for auto-lookup, edited in *Custom auto-lookup template*. Editing the custom field flips the style to Custom automatically.
+
+**Idle delay tuning.** *Idle delay (seconds)* controls how long the plugin waits after the last keystroke before scanning. Range is 0.1 – 60 seconds. Shorter delays feel snappier but fire more often during an active typing burst; longer delays are gentler on a slow JIRA host. The default of 2 s is a comfortable balance for most prose.
+
+**Plays nicely with the URL field debounce.** The settings tab's URL field has its own independent debounce (added in JB-15) — typing a URL never triggers an auto-lookup pass, and an in-flight auto-lookup never steals focus from the settings tab.
+
+**When auto-lookup runs vs. stub sync.** Auto-lookup links keys *as you type*, but it doesn't write a stub note. Stub notes (managed `jira_*` frontmatter, refreshable, queryable from Bases) are produced by **JIRA: Sync issue stubs** — a separate, explicit step. Many users run both: auto-lookup keeps prose readable in real time; sync keeps the Bases view current. Neither requires the other.
 
 ### Link-template tokens
 
@@ -177,6 +214,18 @@ The token is **not** stored in your OS keychain directly, and the plaintext toke
 ### Stub sync doesn't pick up bare keys (`ABC-123`)
 
 Bare-key matching only fires for prefixes listed under *Project prefixes*. Add `ABC` (uppercase, comma-separated for multiples) and re-run **JIRA: Sync issue stubs**. Explicit `[…](<baseUrl>/browse/KEY)` links are matched without any prefix configuration.
+
+### Auto-lookup didn't replace my key
+
+A handful of reasons, in order of likelihood:
+
+- **Project prefix not configured.** Auto-lookup only fires for prefixes listed under *Project prefixes*. Add the prefix (uppercase, comma-separated for multiples) and try again.
+- **Cursor is on the key.** The plugin skips a key your cursor is touching at scan time — it assumes you're still typing. Move the cursor off the key or type a space after it.
+- **Key is in a link already.** `[ABC-123](…)`, `[[ABC-123]]`, and other markdown / wikilink shapes are left alone by design.
+- **Idle pause hasn't elapsed.** Default is 2 s after the last keystroke. If you keep typing, the timer keeps resetting. Stop, wait, watch.
+- **Key is in the failed-keys cache.** A previous lookup for that key failed (404, auth error, …) and the plugin won't re-query it for the cache TTL (default 10 minutes). Reduce *Failed keys cache TTL* to a shorter value, or wait it out.
+- **Key is in frontmatter.** The plugin never rewrites YAML frontmatter — only the note body.
+- **Auto-lookup is off.** Confirm *Auto-lookup on type* is enabled in settings.
 
 ### Hover preview doesn't appear
 
