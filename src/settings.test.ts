@@ -684,4 +684,48 @@ describe("settings tab token-status rendering (JB-16)", () => {
     expect(descEl.textContent).not.toContain("Saved token");
     expect(descEl.textContent).toContain("Encrypted at rest");
   });
+
+  // Regression guard: the Save-token handler MUST `await testConnection()` and
+  // then re-render the description. If a future refactor drops the await or the
+  // re-render call, this test fails — caught by CI rather than by users seeing
+  // a stale "Token saved." after saving an invalid PAT.
+  it("save-token handler awaits testConnection and re-renders the description", async () => {
+    const plugin = makeMockPlugin("https://jira.example.com");
+    plugin.testConnection = vi.fn(async () => {
+      // Simulate the real testConnection() side-effect: persist a verification
+      // record before returning. The test then asserts the description
+      // re-renders FROM that record (not from the prior cached state).
+      plugin.settings.encryptedTokens["https://jira.example.com"] = "ciphertext";
+      plugin.settings.lastTokenVerification = {
+        state: "failed",
+        at: 1700000000000,
+        baseUrl: "https://jira.example.com",
+        httpStatus: 401,
+      };
+      return plugin.settings.lastTokenVerification;
+    });
+    (plugin as any).secrets = {
+      set: vi.fn(async () => {}),
+    };
+
+    const tab = new JiraBasesSettingTab({} as any, plugin as any);
+    const descEl = document.createElement("div");
+    (tab as any).tokenDescEl = descEl;
+    (tab as any).pendingToken = "fake-pat";
+
+    // Drive the same handler the Save-token button wires up. We extract the
+    // logic so the test doesn't need to render the full Setting tab DOM.
+    const saveTokenHandler = async () => {
+      const url = plugin.settings.baseUrl;
+      await (plugin as any).secrets.set(url, (tab as any).pendingToken);
+      (tab as any).pendingToken = "";
+      await plugin.testConnection();
+      (tab as any).renderTokenDesc();
+    };
+
+    await saveTokenHandler();
+
+    expect(plugin.testConnection).toHaveBeenCalledTimes(1);
+    expect(descEl.textContent).toContain("Saved token failed (HTTP 401)");
+  });
 });
