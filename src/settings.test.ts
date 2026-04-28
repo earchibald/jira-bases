@@ -2,9 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   JiraBasesSettingTab,
   URL_VALIDATION_DEBOUNCE_MS,
+  classifyVerificationFromError,
   formatMsAsSeconds,
   parseSecondsToMs,
+  renderTokenStatus,
   splitProjectPrefixes,
+  TokenVerification,
 } from "./settings";
 
 interface MockPluginShape {
@@ -18,9 +21,11 @@ interface MockPluginShape {
     autoLookupIdleMs: number;
     autoLookupMode: "minimal";
     autoLookupTemplate: string;
+    lastTokenVerification: TokenVerification | null;
   };
   saveSettings: () => Promise<void>;
   secrets: Record<string, never>;
+  testConnection: ReturnType<typeof vi.fn>;
 }
 
 function makeMockPlugin(initialBaseUrl = ""): MockPluginShape {
@@ -35,9 +40,11 @@ function makeMockPlugin(initialBaseUrl = ""): MockPluginShape {
       autoLookupIdleMs: 2000,
       autoLookupMode: "minimal" as const,
       autoLookupTemplate: "",
+      lastTokenVerification: null,
     },
     saveSettings: async () => {},
     secrets: {},
+    testConnection: vi.fn(async () => null),
   };
 }
 
@@ -407,5 +414,274 @@ describe("splitProjectPrefixes", () => {
     const r = splitProjectPrefixes("");
     expect(r.accepted).toEqual([]);
     expect(r.rejected).toEqual([]);
+  });
+});
+
+describe("classifyVerificationFromError (JB-16)", () => {
+  const url = "https://jira.example.com";
+  const NOW = 1700000000000;
+
+  it("maps auth 401 → failed with httpStatus", () => {
+    const v = classifyVerificationFromError(
+      { kind: "auth", status: 401, message: "" },
+      url,
+      NOW,
+    );
+    expect(v).toEqual({
+      state: "failed",
+      at: NOW,
+      baseUrl: url,
+      httpStatus: 401,
+    });
+  });
+
+  it("maps auth 403 → failed with httpStatus", () => {
+    const v = classifyVerificationFromError(
+      { kind: "auth", status: 403, message: "" },
+      url,
+      NOW,
+    );
+    expect(v?.state).toBe("failed");
+    expect(v?.httpStatus).toBe(403);
+  });
+
+  it("maps non-auth http 4xx → failed with httpStatus", () => {
+    const v = classifyVerificationFromError(
+      { kind: "http", status: 404, message: "" },
+      url,
+      NOW,
+    );
+    expect(v?.state).toBe("failed");
+    expect(v?.httpStatus).toBe(404);
+  });
+
+  it("maps http 5xx → pending (JIRA reachable but ill, not user-fixable)", () => {
+    const v = classifyVerificationFromError(
+      { kind: "http", status: 503, message: "" },
+      url,
+      NOW,
+    );
+    expect(v?.state).toBe("pending");
+    expect(v?.httpStatus).toBe(503);
+  });
+
+  it("maps network error → pending", () => {
+    const v = classifyVerificationFromError(
+      { kind: "network", message: "ENOTFOUND" },
+      url,
+      NOW,
+    );
+    expect(v?.state).toBe("pending");
+    expect(v?.httpStatus).toBeUndefined();
+  });
+
+  it("maps parse error → pending (200 OK with bad shape is inconclusive)", () => {
+    const v = classifyVerificationFromError(
+      { kind: "parse", message: "missing displayName" },
+      url,
+      NOW,
+    );
+    expect(v?.state).toBe("pending");
+  });
+
+  it("maps no-token → null (no pseudo-state to persist)", () => {
+    const v = classifyVerificationFromError({ kind: "no-token" }, url, NOW);
+    expect(v).toBeNull();
+  });
+
+  it("attaches the base URL we tested against, so URL drift can invalidate it", () => {
+    const v = classifyVerificationFromError(
+      { kind: "auth", status: 401, message: "" },
+      url,
+      NOW,
+    );
+    expect(v?.baseUrl).toBe(url);
+  });
+});
+
+describe("renderTokenStatus (JB-16)", () => {
+  const url = "https://jira.example.com";
+
+  it("returns null when no token is saved", () => {
+    expect(
+      renderTokenStatus({ hasToken: false, baseUrl: url, verification: null }),
+    ).toBeNull();
+  });
+
+  it("legacy fallback: token saved but no verification record yet", () => {
+    expect(
+      renderTokenStatus({ hasToken: true, baseUrl: url, verification: null }),
+    ).toEqual({ emoji: "✓", text: "Token saved." });
+  });
+
+  it("renders verified", () => {
+    expect(
+      renderTokenStatus({
+        hasToken: true,
+        baseUrl: url,
+        verification: { state: "verified", at: 1, baseUrl: url },
+      }),
+    ).toEqual({ emoji: "✓", text: "Saved token verified" });
+  });
+
+  it("renders pending without detail", () => {
+    expect(
+      renderTokenStatus({
+        hasToken: true,
+        baseUrl: url,
+        verification: { state: "pending", at: 1, baseUrl: url },
+      }),
+    ).toEqual({ emoji: "⏳", text: "Saved token — pending test" });
+  });
+
+  it("renders pending with detail (e.g. network error context)", () => {
+    expect(
+      renderTokenStatus({
+        hasToken: true,
+        baseUrl: url,
+        verification: {
+          state: "pending",
+          at: 1,
+          baseUrl: url,
+          detail: "network error",
+        },
+      }),
+    ).toEqual({
+      emoji: "⏳",
+      text: "Saved token — pending test (network error)",
+    });
+  });
+
+  it("renders failed with HTTP status", () => {
+    expect(
+      renderTokenStatus({
+        hasToken: true,
+        baseUrl: url,
+        verification: {
+          state: "failed",
+          at: 1,
+          baseUrl: url,
+          httpStatus: 401,
+        },
+      }),
+    ).toEqual({ emoji: "❌", text: "Saved token failed (HTTP 401)" });
+  });
+
+  it("renders failed without httpStatus when missing", () => {
+    expect(
+      renderTokenStatus({
+        hasToken: true,
+        baseUrl: url,
+        verification: { state: "failed", at: 1, baseUrl: url },
+      }),
+    ).toEqual({ emoji: "❌", text: "Saved token failed" });
+  });
+
+  it("URL-drift fallback: ignores verification recorded against a different base URL", () => {
+    expect(
+      renderTokenStatus({
+        hasToken: true,
+        baseUrl: "https://jira.new.example.com",
+        verification: {
+          state: "verified",
+          at: 1,
+          baseUrl: "https://jira.old.example.com",
+        },
+      }),
+    ).toEqual({ emoji: "✓", text: "Token saved." });
+  });
+});
+
+describe("settings tab token-status rendering (JB-16)", () => {
+  it("renders cached verification on tab open without making a network call", () => {
+    const plugin = makeMockPlugin("https://jira.example.com");
+    plugin.settings.encryptedTokens["https://jira.example.com"] = "ciphertext";
+    plugin.settings.lastTokenVerification = {
+      state: "verified",
+      at: 1700000000000,
+      baseUrl: "https://jira.example.com",
+    };
+    const tab = new JiraBasesSettingTab({} as any, plugin as any);
+    const descEl = document.createElement("div");
+    (tab as any).tokenDescEl = descEl;
+
+    (tab as any).renderTokenDesc();
+
+    expect(descEl.textContent).toContain("Saved token verified");
+    expect(plugin.testConnection).not.toHaveBeenCalled();
+  });
+
+  it("renders failed status from a cached 401 verification", () => {
+    const plugin = makeMockPlugin("https://jira.example.com");
+    plugin.settings.encryptedTokens["https://jira.example.com"] = "ciphertext";
+    plugin.settings.lastTokenVerification = {
+      state: "failed",
+      at: 1700000000000,
+      baseUrl: "https://jira.example.com",
+      httpStatus: 401,
+    };
+    const tab = new JiraBasesSettingTab({} as any, plugin as any);
+    const descEl = document.createElement("div");
+    (tab as any).tokenDescEl = descEl;
+
+    (tab as any).renderTokenDesc();
+
+    expect(descEl.textContent).toContain("Saved token failed (HTTP 401)");
+    // The failed line gets the warning class so users see it as red.
+    const warning = descEl.querySelector(".mod-warning");
+    expect(warning?.textContent).toContain("Saved token failed");
+    expect(plugin.testConnection).not.toHaveBeenCalled();
+  });
+
+  it("renders pending status from a cached network error", () => {
+    const plugin = makeMockPlugin("https://jira.example.com");
+    plugin.settings.encryptedTokens["https://jira.example.com"] = "ciphertext";
+    plugin.settings.lastTokenVerification = {
+      state: "pending",
+      at: 1700000000000,
+      baseUrl: "https://jira.example.com",
+      detail: "network error",
+    };
+    const tab = new JiraBasesSettingTab({} as any, plugin as any);
+    const descEl = document.createElement("div");
+    (tab as any).tokenDescEl = descEl;
+
+    (tab as any).renderTokenDesc();
+
+    expect(descEl.textContent).toContain(
+      "Saved token — pending test (network error)",
+    );
+    expect(plugin.testConnection).not.toHaveBeenCalled();
+  });
+
+  it("falls back to legacy 'Token saved.' when verification is for a stale base URL", () => {
+    const plugin = makeMockPlugin("https://jira.NEW.example.com");
+    plugin.settings.encryptedTokens["https://jira.NEW.example.com"] =
+      "ciphertext";
+    plugin.settings.lastTokenVerification = {
+      state: "verified",
+      at: 1700000000000,
+      baseUrl: "https://jira.OLD.example.com",
+    };
+    const tab = new JiraBasesSettingTab({} as any, plugin as any);
+    const descEl = document.createElement("div");
+    (tab as any).tokenDescEl = descEl;
+
+    (tab as any).renderTokenDesc();
+
+    expect(descEl.textContent).toContain("Token saved.");
+    expect(descEl.textContent).not.toContain("verified");
+  });
+
+  it("renders only the storage explainer when no token is saved", () => {
+    const plugin = makeMockPlugin("https://jira.example.com");
+    const tab = new JiraBasesSettingTab({} as any, plugin as any);
+    const descEl = document.createElement("div");
+    (tab as any).tokenDescEl = descEl;
+
+    (tab as any).renderTokenDesc();
+
+    expect(descEl.textContent).not.toContain("Saved token");
+    expect(descEl.textContent).toContain("Encrypted at rest");
   });
 });
