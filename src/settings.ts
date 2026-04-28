@@ -196,8 +196,26 @@ export class JiraBasesSettingTab extends PluginSettingTab {
       return { valid: false, message: "URL is required" };
     }
 
+    // Mid-typing a protocol prefix — anything from "http" through
+    // "https://". Without this guard, deleting one slash from
+    // "https://" leaves "https:/", which the missing-protocol branch
+    // below would naively prepend to as "https://https:/" (JB-15 bug).
+    if (/^https?(:\/?\/?)?$/i.test(trimmed)) {
+      return { valid: false, message: "Continue typing — URL incomplete." };
+    }
+
     // Check if protocol is missing
     if (!trimmed.match(/^https?:\/\//i)) {
+      // The value already starts with "http"/"https" but doesn't have a
+      // complete "://" — it's a half-edited protocol (e.g. "https:/jira.com"
+      // with one slash). Don't auto-prepend; surface a hint and wait for
+      // the user to finish.
+      if (/^https?/i.test(trimmed)) {
+        return {
+          valid: false,
+          message: "⚠️ Incomplete URL. Finish typing the protocol (https://...).",
+        };
+      }
       return {
         valid: false,
         message: "⚠️ Missing protocol. Auto-fixed to use https://",
@@ -205,13 +223,18 @@ export class JiraBasesSettingTab extends PluginSettingTab {
       };
     }
 
-    // Check for trailing slash
+    // Check for trailing slash — only strip if there's a host before it,
+    // so we never reduce "https://" to a bare "https:".
     if (trimmed.endsWith("/")) {
-      return {
-        valid: false,
-        message: "⚠️ Trailing slash detected. Auto-fixed.",
-        fixed: trimmed.replace(/\/+$/, ""),
-      };
+      const stripped = trimmed.replace(/\/+$/, "");
+      if (/^https?:\/\/.+/i.test(stripped)) {
+        return {
+          valid: false,
+          message: "⚠️ Trailing slash detected. Auto-fixed.",
+          fixed: stripped,
+        };
+      }
+      // else fall through — URL constructor will reject as invalid.
     }
 
     // Basic URL validation

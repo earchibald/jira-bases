@@ -191,6 +191,45 @@ describe("URL Validation", () => {
     expect(result.message).toBe("✓ Valid URL");
     expect(result.fixed).toBeUndefined();
   });
+
+  // Partial-protocol guards (JB-15 follow-up).
+  // Reproduces the user-reported case: typing "https://" then deleting one
+  // slash leaves "https:/", which the old code would "auto-fix" to
+  // "https://https:/" by naive prepend. The fix detects partial protocols
+  // and waits for the user to finish.
+  it.each([
+    ["http"],
+    ["https"],
+    ["http:"],
+    ["https:"],
+    ["http:/"],
+    ["https:/"],
+    ["http://"],
+    ["https://"],
+    ["HTTPS:/"],
+  ])("does not auto-prepend https:// to partial protocol %s", (input) => {
+    const result = validateUrl(input);
+    expect(result.valid).toBe(false);
+    expect(result.fixed).toBeUndefined();
+    expect(result.message).toBe("Continue typing — URL incomplete.");
+  });
+
+  it("does not auto-prepend https:// to a half-edited URL like 'https:/jira.com'", () => {
+    const result = validateUrl("https:/jira.com");
+    expect(result.valid).toBe(false);
+    expect(result.fixed).toBeUndefined();
+    expect(result.message).toBe(
+      "⚠️ Incomplete URL. Finish typing the protocol (https://...).",
+    );
+  });
+
+  it("does not strip the trailing slash off a bare 'https://'", () => {
+    // The strip would otherwise produce "https:" — a partial protocol —
+    // and the next debounced run would then try to prepend again.
+    const result = validateUrl("https://");
+    expect(result.fixed).toBeUndefined();
+    expect(result.message).toBe("Continue typing — URL incomplete.");
+  });
 });
 
 describe("formatMsAsSeconds", () => {
