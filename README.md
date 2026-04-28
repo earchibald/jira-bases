@@ -114,7 +114,7 @@ For one-off lookups without inserting a link, run **JIRA: Look up issue…** and
 | **Stubs folder** | `JIRA` | Where stub notes are written, vault-relative. |
 | **Auto-lookup on type** | off | When enabled, bare keys you type (matching configured prefixes) are replaced with a link after an idle pause. |
 | **Auto-lookup link style** | Minimal | `Minimal` = `[KEY](url)`. `Primary` = the *Link template* above. `Custom` = a separate template you control. |
-| **Idle delay (ms)** | `2000` | How long after the last keystroke before queued lookups apply. |
+| **Idle delay (seconds)** | `2000` | How long after the last keystroke before queued lookups apply. Range 0.1–60 s. |
 | **Project prefixes** | _(empty)_ | Comma-separated, e.g. `ABC, PROJ`. Required for bare-key matching; explicit links work without it. |
 | **Failed keys cache TTL / max size** | `600000` ms / `500` | Suppresses repeat API calls for keys that don't resolve. |
 | **Auto-refresh stubs** | off | Periodic re-fetch of all stubs. |
