@@ -2,6 +2,10 @@
 
 All notable changes to **JIRA Bases** are recorded here. Releases follow [semver](https://semver.org/) and are auto-published to GitHub Releases when `manifest.json` / `package.json` versions change on `main`.
 
+## 1.1.1 — README — auto-lookup as a passive flow (JB-17)
+
+- **Docs.** Promotes auto-lookup-on-type from a one-line settings entry to a first-class flow in the README. Adds an Overview bullet, a Quick Start subsection, a Reference deep-dive (what it scans, what it skips, link styles, idle-pause tuning, interaction with stub sync and the JB-15 URL debounce), and a Troubleshooting entry covering the common "key didn't get linked" gotchas. No code changes.
+
 ## 1.1.0 — Test connection dedupe + dynamic token status (JB-16)
 
 - **Dedupe.** The standalone "Test connection" setting row is gone; the inline `Test` button next to Save/Clear (added in JB-8) is the single entry point. Behavior is unchanged — same `/rest/api/2/myself` call, same Notice text.
