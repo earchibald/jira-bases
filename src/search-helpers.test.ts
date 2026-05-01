@@ -90,10 +90,16 @@ describe("searchLocalIssues", () => {
     expect(searchLocalIssues(ISSUES, "Eugene", 20).map((issue) => issue.key)).toEqual([
       "ABC-123",
     ]);
+    expect(searchLocalIssues(ISSUES, "Colleague", 20).map((issue) => issue.key)).toEqual([
+      "ABC-123",
+    ]);
     expect(searchLocalIssues(ISSUES, "frontend", 20).map((issue) => issue.key)).toEqual([
       "ABC-123",
     ]);
     expect(searchLocalIssues(ISSUES, "High", 20).map((issue) => issue.key)).toEqual([
+      "ABC-123",
+    ]);
+    expect(searchLocalIssues(ISSUES, "2026-05-01", 20).map((issue) => issue.key)).toEqual([
       "ABC-123",
     ]);
   });

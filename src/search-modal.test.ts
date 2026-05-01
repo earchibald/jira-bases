@@ -43,6 +43,14 @@ async function flush() {
   await Promise.resolve();
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 describe("SearchModal", () => {
   it("renders title, helper text, and server-search button", () => {
     const modal = createModal();
@@ -110,6 +118,31 @@ describe("SearchModal", () => {
 
     expect(searchIssues).toHaveBeenCalledWith("server", 20);
     expect(modal.contentEl.textContent).toContain("SRV-3 — Keyboard result");
+  });
+
+  it("ignores stale server results after the user keeps typing locally", async () => {
+    const pending = deferred<Result<Issue[], never>>();
+    const searchIssues = vi.fn(async () => pending.promise);
+    const modal = createModal({
+      client: createClient({ searchIssues }),
+      localIssues: [issue("LOC-1", "Local alpha"), issue("LOC-2", "Local beta")],
+    });
+    modal.onOpen();
+
+    const input = modal.contentEl.querySelector("input") as HTMLInputElement;
+    input.value = "alpha";
+    input.dispatchEvent(new Event("input"));
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true }));
+    await flush();
+
+    input.value = "beta";
+    input.dispatchEvent(new Event("input"));
+    pending.resolve(ok([issue("SRV-9", "Server alpha")] as Issue[]));
+    await flush();
+
+    expect(modal.contentEl.textContent).toContain("LOC-2 — Local beta");
+    expect(modal.contentEl.textContent).not.toContain("SRV-9 — Server alpha");
+    expect(modal.contentEl.textContent).toContain("Showing local stub matches.");
   });
 
   it("inserts the first selected result on Enter from the input", async () => {

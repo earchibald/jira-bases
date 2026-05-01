@@ -90,6 +90,7 @@ export class SearchModal extends Modal {
   }
 
   private renderLocalResults(): void {
+    this.requestSeq += 1;
     this.mode = "local";
     this.loading = false;
     this.results = searchLocalIssues(this.localIssues, this.inputEl.value, RESULT_LIMIT);
