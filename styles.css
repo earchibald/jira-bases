@@ -107,7 +107,6 @@
 
 .jb-search-modal {
   width: min(1100px, calc(100vw - 96px));
-  max-width: min(1100px, calc(100vw - 96px));
 }
 
 .jb-search-controls {
