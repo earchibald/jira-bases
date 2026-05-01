@@ -53,6 +53,8 @@ import type { Editor } from "obsidian";
 import { generateBase } from "./base-generator";
 import { BaseGeneratorModal } from "./base-generator-modal";
 import { resolveIssueKey } from "./resolve-issue-key";
+import { SearchModal } from "./search-modal";
+import type { SearchIssue } from "./search-helpers";
 
 /**
  * Escape IssueDetails fields for safe use in renderTemplate.
@@ -162,6 +164,12 @@ export default class JiraBasesPlugin extends Plugin {
       id: "insert-issue-link",
       name: "JIRA: Insert issue link",
       editorCallback: (editor) => this.insertIssueLink(editor),
+    });
+
+    this.addCommand({
+      id: "search-issues",
+      name: "JIRA: Search issues…",
+      callback: () => this.searchIssuesCommand(),
     });
 
     this.addCommand({
@@ -644,6 +652,81 @@ export default class JiraBasesPlugin extends Plugin {
     modal.open();
   }
 
+  private collectStubIssues(): SearchIssue[] {
+    const folder = this.settings.stubsFolder.replace(/^\/+|\/+$/g, "");
+    const prefix = folder ? `${folder}/` : "";
+    const issues = new Map<string, SearchIssue>();
+
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      if (prefix && !file.path.startsWith(prefix)) continue;
+      const frontmatter =
+        (this.app.metadataCache.getFileCache(file)?.frontmatter as
+          | Record<string, unknown>
+          | undefined) ?? null;
+      if (!frontmatter) continue;
+      const key = frontmatter.jira_key;
+      const summary = frontmatter.jira_summary;
+      if (typeof key !== "string" || typeof summary !== "string") continue;
+      const rawLabels = frontmatter.jira_labels;
+      const labels = Array.isArray(rawLabels)
+        ? rawLabels.filter((value: unknown): value is string => typeof value === "string")
+        : [];
+      issues.set(key, {
+        key,
+        summary,
+        status: typeof frontmatter.jira_status === "string" ? frontmatter.jira_status : "",
+        type: typeof frontmatter.jira_type === "string" ? frontmatter.jira_type : "",
+        priority:
+          typeof frontmatter.jira_priority === "string" ? frontmatter.jira_priority : null,
+        assignee:
+          typeof frontmatter.jira_assignee === "string" ? frontmatter.jira_assignee : null,
+        reporter:
+          typeof frontmatter.jira_reporter === "string" ? frontmatter.jira_reporter : null,
+        labels,
+        updated: typeof frontmatter.jira_updated === "string" ? frontmatter.jira_updated : "",
+      });
+    }
+
+    return [...issues.values()];
+  }
+
+  private async insertIssueByKey(key: string): Promise<void> {
+    const editor = this.app.workspace.activeEditor?.editor;
+    if (!editor) {
+      new Notice("Open a note with an editor to insert a JIRA link.");
+      return;
+    }
+    const result = await this.makeClient().getIssueDetails(key);
+    if (!result.ok) {
+      new Notice(errorMessage(result.error));
+      return;
+    }
+    editor.replaceSelection(
+      renderTemplate(this.settings.linkTemplate, escapeIssueDetailsForTemplate(result.value)),
+    );
+  }
+
+  private openIssueKeyInBrowser(key: string): void {
+    const url = `${this.settings.baseUrl.replace(/\/+$/, "")}/browse/${key}`;
+    window.open(url, "_blank");
+  }
+
+  async searchIssuesCommand(): Promise<void> {
+    if (!this.settings.baseUrl) {
+      new Notice("Set your JIRA base URL in plugin settings.");
+      return;
+    }
+
+    const modal = new SearchModal({
+      app: this.app,
+      client: this.makeClient(),
+      loadLocalIssues: () => this.collectStubIssues(),
+      onInsert: (issue) => this.insertIssueByKey(issue.key),
+      onOpenIssue: (issue) => this.openIssueKeyInBrowser(issue.key),
+    });
+    modal.open();
+  }
+
   private resolveCurrentIssueKey(editor: Editor | null): string | null {
     const file = this.app.workspace.getActiveFile();
     let fm: Record<string, unknown> | null = null;
@@ -671,8 +754,7 @@ export default class JiraBasesPlugin extends Plugin {
       );
       return;
     }
-    const url = `${this.settings.baseUrl.replace(/\/+$/, "")}/browse/${key}`;
-    window.open(url, "_blank");
+    this.openIssueKeyInBrowser(key);
   }
 
   async copyIssueUrl(): Promise<void> {
