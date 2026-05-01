@@ -1,4 +1,4 @@
-import { escapeJqlText } from "./issue-suggest-helpers";
+import { buildSearchJql } from "./search-helpers";
 import { parseIssueDetails, IssueDetails } from "./jira-fields";
 
 export type CurrentUser = {
@@ -225,7 +225,7 @@ export function createJiraClient(opts: JiraClientOptions): JiraClient {
       const token = await opts.getToken();
       if (!token) return { ok: false, error: { kind: "no-token" } };
 
-      const jql = `text ~ "${escapeJqlText(query)}" ORDER BY updated DESC`;
+      const jql = buildSearchJql(query);
       const url =
         `${base}/rest/api/2/search` +
         `?jql=${encodeURIComponent(jql)}` +

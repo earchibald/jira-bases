@@ -8,12 +8,13 @@ An Obsidian plugin that turns your JIRA issues into first-class Bases data — s
 
 JIRA Bases keeps a folder of read-only **stub notes** in your vault — one note per JIRA issue you reference — with managed frontmatter (`jira_status`, `jira_priority`, `jira_assignee`, …). Pair it with [Obsidian Bases](https://help.obsidian.md/bases) and you get a sortable, filterable table of your JIRA issues that lives entirely in your vault. The plugin also inserts smart links, previews issues on hover, and (optionally) replaces bare issue keys you type with proper links.
 
-Four flows you'll use most:
+Five flows you'll use most:
 
 1. **Insert a JIRA link** — fuzzy-pick an issue, paste a configurable link template.
-2. **Sync stubs and view them in Bases** — scans your vault for JIRA references, fetches fields, writes one stub per issue, then renders them through a generated `.base` view.
-3. **Hover or look up an issue** — preview summary, status, type, priority, assignee, reporter, and last-updated time without leaving the editor.
-4. **Auto-lookup as you type (passive)** — type bare keys like `ABC-123` in any note and the plugin replaces them with proper links after a brief idle pause. The fully passive companion to flow #1 — no palette, no selection, no thought required. See [Auto-lookup on type](#auto-lookup-on-type).
+2. **Search issues from the palette** — get instant local stub matches, then press Cmd-Enter or click **Search on server** for live JIRA results. Enter inserts the selected issue; Cmd-Enter opens it in your browser.
+3. **Sync stubs and view them in Bases** — scans your vault for JIRA references, fetches fields, writes one stub per issue, then renders them through a generated `.base` view.
+4. **Hover or look up an issue** — preview summary, status, type, priority, assignee, reporter, and last-updated time without leaving the editor.
+5. **Auto-lookup as you type (passive)** — type bare keys like `ABC-123` in any note and the plugin replaces them with proper links after a brief idle pause. The fully passive companion to flow #1 — no palette, no selection, no thought required. See [Auto-lookup on type](#auto-lookup-on-type).
 
 <!-- TODO: capture docs/screenshots/insert-link.gif — Insert issue link flow -->
 <!-- TODO: capture docs/screenshots/sync-and-base.gif — Sync stubs + Bases view -->
@@ -66,7 +67,11 @@ Open the command palette and run **JIRA: Insert issue link**. Type any part of t
 
 To wrap an existing selection, select the text first, then run **JIRA: Insert issue link** — the suggestion modal will use your selection as the seed search.
 
-### 3a. Enable auto-lookup as you type (optional, passive)
+### 3a. Search issues from the palette
+
+Open the command palette and run **JIRA: Search issues…**. As you type, the modal searches your local stub notes immediately. Press **Cmd-Enter** or click **Search on server** to replace those local matches with live JIRA results; JQL is passed through when detected. Press **Enter** on a selected result to insert it with your standard link template, or **Cmd-Enter** on a selected result to open it in the browser.
+
+### 3b. Enable auto-lookup as you type (optional, passive)
 
 If you write notes that mention JIRA issues by key (`ABC-123` in a meeting note, a daily log, a roadmap doc), turn on **Auto-lookup on type** and skip the palette entirely.
 
@@ -98,6 +103,7 @@ For one-off lookups without inserting a link, run **JIRA: Look up issue…** and
 | :--- | :--- |
 | **JIRA: Test connection** | Calls `/rest/api/2/myself`. Returns the authenticated user. |
 | **JIRA: Insert issue link** | Fuzzy-pick an issue and insert a markdown link using your *Link template*. Works on the current selection too. |
+| **JIRA: Search issues…** | Search local stub notes instantly, then press Cmd-Enter or click **Search on server** for live JIRA results. Enter inserts the selected issue; Cmd-Enter opens it in the browser. |
 | **JIRA: Sync issue stubs** | Scans the vault for JIRA references, fetches fields, writes/updates stubs in your *Stubs folder*. |
 | **JIRA: Clean orphaned stubs** | Deletes stub notes whose issue is no longer referenced anywhere in the vault. |
 | **JIRA: Look up issue…** | Modal that accepts a key or browse URL and renders the same preview as hover. |
