@@ -211,6 +211,7 @@ describe("findLinkContainingRange", () => {
 
   it("returns null when the selection extends outside the link", () => {
     expect(findLinkContainingRange(line, 2, 10)).toBeNull();
+    expect(findLinkContainingRange(line, 5, 47)).toBeNull();
   });
 });
 
@@ -256,6 +257,7 @@ describe("findWikilinkContainingRange", () => {
 
   it("returns null when the selection extends outside the wikilink", () => {
     expect(findWikilinkContainingRange(line, 2, 12)).toBeNull();
+    expect(findWikilinkContainingRange(line, 5, 34)).toBeNull();
   });
 });
 
@@ -280,6 +282,7 @@ describe("findKeyContainingRange", () => {
 
   it("returns null when the selection extends outside the key", () => {
     expect(findKeyContainingRange(line, 2, 8)).toBeNull();
+    expect(findKeyContainingRange(line, 4, 13)).toBeNull();
   });
 });
 

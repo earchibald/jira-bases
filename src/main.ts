@@ -576,6 +576,9 @@ export default class JiraBasesPlugin extends Plugin {
         ) {
           return selectRange(markdownLink.start, markdownLink.end);
         }
+        if (markdownLink) {
+          return selection;
+        }
 
         const wikilink = findWikilinkContainingRange(line, from.ch, to.ch);
         if (
@@ -583,6 +586,9 @@ export default class JiraBasesPlugin extends Plugin {
           classifyRewriteIssueReference(line.slice(wikilink.start, wikilink.end), baseUrl)
         ) {
           return selectRange(wikilink.start, wikilink.end);
+        }
+        if (wikilink) {
+          return selection;
         }
 
         const key = findKeyContainingRange(line, from.ch, to.ch);
