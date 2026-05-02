@@ -1,8 +1,11 @@
 import {
+  classifyIssueReference,
+  extractKeyFromWikilink,
   extractKeyFromHref,
   findKeyAtCol,
   findKeyInText,
   findLinkAtCol,
+  findWikilinkAtCol,
   parseKeyOrUrl,
 } from "./jira-key";
 
@@ -27,7 +30,9 @@ export function resolveIssueKey(deps: ResolveIssueKeyDeps): string | null {
     const selection = editor.getSelection();
     if (selection) {
       const fromSelection =
-        parseKeyOrUrl(selection, baseUrl) ?? findKeyInText(selection);
+        classifyIssueReference(selection, baseUrl)?.key ??
+        parseKeyOrUrl(selection, baseUrl) ??
+        findKeyInText(selection);
       if (fromSelection) return fromSelection;
     }
     const cursor = editor.getCursor();
@@ -36,6 +41,11 @@ export function resolveIssueKey(deps: ResolveIssueKeyDeps): string | null {
     if (link) {
       const linkKey =
         extractKeyFromHref(link.url, baseUrl) ?? findKeyInText(link.text);
+      if (linkKey) return linkKey;
+    }
+    const wikilink = findWikilinkAtCol(line, cursor.ch);
+    if (wikilink) {
+      const linkKey = extractKeyFromWikilink(wikilink);
       if (linkKey) return linkKey;
     }
     const hit = findKeyAtCol(line, cursor.ch);

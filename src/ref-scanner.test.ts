@@ -35,6 +35,18 @@ describe("findReferences — link form", () => {
     const refs = findReferences(content, BASE, []);
     expect([...refs]).toEqual(["ABC-1"]);
   });
+
+  it("captures keys from wikilinks without requiring prefixes", () => {
+    const content = "See [[JIRA/ABC-123 Summary|ABC-123]].";
+    const refs = findReferences(content, BASE, []);
+    expect([...refs]).toEqual(["ABC-123"]);
+  });
+
+  it("captures keys from wikilink targets when alias omits the key", () => {
+    const content = "See [[JIRA/ABC-123 Summary|Follow-up note]].";
+    const refs = findReferences(content, BASE, []);
+    expect([...refs]).toEqual(["ABC-123"]);
+  });
 });
 
 describe("findReferences — bare key form", () => {

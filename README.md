@@ -67,6 +67,8 @@ Open the command palette and run **JIRA: Insert issue link**. Type any part of t
 
 To wrap an existing selection, select the text first, then run **JIRA: Insert issue link** — the suggestion modal will use your selection as the seed search.
 
+To flip an exact issue key back and forth with your configured link template, run **JIRA: Toggle issue key / templated link** with the cursor on a bare key, markdown link, or wikilink. This is especially handy when your link template renders Obsidian wikilinks to synced stub notes.
+
 ### 3a. Search issues from the palette
 
 Open the command palette and run **JIRA: Search issues…**. As you type, the modal searches your local stub notes immediately. Press **Cmd-Enter** or click **Search on server** to replace those local matches with live JIRA results; JQL is passed through when detected. Press **Enter** on a selected result to insert it with your standard link template, or **Cmd-Enter** on a selected result to open it in the browser.
@@ -103,6 +105,7 @@ For one-off lookups without inserting a link, run **JIRA: Look up issue…** and
 | :--- | :--- |
 | **JIRA: Test connection** | Calls `/rest/api/2/myself`. Returns the authenticated user. |
 | **JIRA: Insert issue link** | Fuzzy-pick an issue and insert a markdown link using your *Link template*. Works on the current selection too. |
+| **JIRA: Toggle issue key / templated link** | Toggles the exact JIRA reference at the cursor between a bare issue key and your configured *Link template* output, including wikilink templates. |
 | **JIRA: Search issues…** | Search local stub notes instantly, then press Cmd-Enter or click **Search on server** for live JIRA results. Enter inserts the selected issue; Cmd-Enter opens it in the browser. |
 | **JIRA: Sync issue stubs** | Scans the vault for JIRA references, fetches fields, writes/updates stubs in your *Stubs folder*. |
 | **JIRA: Clean orphaned stubs** | Deletes stub notes whose issue is no longer referenced anywhere in the vault. |

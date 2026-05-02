@@ -1,3 +1,5 @@
+import { extractKeyFromWikilink, parseWikilink } from "./jira-key";
+
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -22,6 +24,13 @@ export function findReferences(
     for (const m of content.matchAll(linkRe)) {
       found.add(m[1].toUpperCase());
     }
+  }
+
+  const wikilinkRe = /\[\[[^\]\n]+\]\]/g;
+  for (const m of content.matchAll(wikilinkRe)) {
+    const parsed = parseWikilink(m[0]);
+    const key = parsed ? extractKeyFromWikilink(parsed) : null;
+    if (key) found.add(key.toUpperCase());
   }
 
   const valid = prefixes.filter((p) => /^[A-Z][A-Z0-9]+$/.test(p));

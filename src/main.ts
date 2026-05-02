@@ -39,11 +39,11 @@ import { createIssueService, IssueService } from "./issue-service";
 import { registerHoverPreview } from "./hover-preview";
 import { LookupModal } from "./lookup-modal";
 import {
-  extractKeyFromHref,
+  classifyIssueReference,
   findKeyAtCol,
   findKeyInText,
   findLinkAtCol,
-  parseMarkdownLink,
+  findWikilinkAtCol,
 } from "./jira-key";
 import { CommentIssueSuggestModal } from "./comment-issue-modal";
 import { createFailedKeysTracker, FailedKeysTracker } from "./failed-keys-tracker";
@@ -164,6 +164,12 @@ export default class JiraBasesPlugin extends Plugin {
       id: "insert-issue-link",
       name: "JIRA: Insert issue link",
       editorCallback: (editor) => this.insertIssueLink(editor),
+    });
+
+    this.addCommand({
+      id: "toggle-issue-key-template-link",
+      name: "JIRA: Toggle issue key / templated link",
+      editorCallback: (editor) => this.toggleIssueKeyTemplateLink(editor),
     });
 
     this.addCommand({
@@ -545,6 +551,41 @@ export default class JiraBasesPlugin extends Plugin {
     this.setupStatusBar();
   }
 
+  private expandSelectionToIssueReference(editor: Editor, baseUrl: string): string {
+    let selection = editor.getSelection();
+    if (selection) return selection;
+
+    const cursor = editor.getCursor();
+    const line = editor.getLine(cursor.line);
+    const selectRange = (start: number, end: number): string => {
+      editor.setSelection(
+        { line: cursor.line, ch: start },
+        { line: cursor.line, ch: end },
+      );
+      return line.slice(start, end);
+    };
+
+    const markdownLink = findLinkAtCol(line, cursor.ch);
+    if (
+      markdownLink &&
+      classifyIssueReference(line.slice(markdownLink.start, markdownLink.end), baseUrl)
+    ) {
+      return selectRange(markdownLink.start, markdownLink.end);
+    }
+
+    const wikilink = findWikilinkAtCol(line, cursor.ch);
+    if (wikilink && classifyIssueReference(line.slice(wikilink.start, wikilink.end), baseUrl)) {
+      return selectRange(wikilink.start, wikilink.end);
+    }
+
+    const hit = findKeyAtCol(line, cursor.ch);
+    if (hit) {
+      return selectRange(hit.start, hit.end);
+    }
+
+    return selection;
+  }
+
   async insertIssueLink(editor: Editor): Promise<void> {
     const baseUrl = this.settings.baseUrl;
     if (!baseUrl) {
@@ -555,56 +596,27 @@ export default class JiraBasesPlugin extends Plugin {
     // Establish the effective selection. If the editor has a real selection,
     // honor it; otherwise, if the cursor is on a JIRA key, expand to that key.
     const baseStripped = baseUrl.replace(/\/+$/, "");
-    let selection = editor.getSelection();
-    if (!selection) {
-      const cursor = editor.getCursor();
-      const line = editor.getLine(cursor.line);
-      const link = findLinkAtCol(line, cursor.ch);
-      const linkKey = link
-        ? (extractKeyFromHref(link.url, baseUrl) ?? findKeyInText(link.text))
-        : null;
-      if (link && linkKey) {
-        editor.setSelection(
-          { line: cursor.line, ch: link.start },
-          { line: cursor.line, ch: link.end },
-        );
-        selection = line.slice(link.start, link.end);
-      } else {
-        const hit = findKeyAtCol(line, cursor.ch);
-        if (hit) {
-          editor.setSelection(
-            { line: cursor.line, ch: hit.start },
-            { line: cursor.line, ch: hit.end },
-          );
-          selection = hit.key;
-        }
-      }
-    }
+    const selection = this.expandSelectionToIssueReference(editor, baseUrl);
 
     const client = this.makeClient();
 
-    // Case A0: selection is an existing markdown link pointing at a JIRA
-    // issue — reformat it to the configured linkTemplate.
-    if (selection) {
-      const parsed = parseMarkdownLink(selection);
-      const linkKey = parsed
-        ? (extractKeyFromHref(parsed.url, baseUrl) ??
-          findKeyInText(parsed.text))
-        : null;
-      if (parsed && linkKey) {
-        const r = await client.getIssueDetails(linkKey);
-        if (!r.ok) {
-          new Notice(errorMessage(r.error));
-          return;
-        }
-        editor.replaceSelection(
-          renderTemplate(this.settings.linkTemplate, escapeIssueDetailsForTemplate(r.value)),
-        );
+    // Case A0: selection is an existing markdown link or wikilink pointing at
+    // a JIRA issue — reformat it to the configured linkTemplate.
+    const exactReference = selection ? classifyIssueReference(selection, baseUrl) : null;
+    if (exactReference?.kind === "link") {
+      const r = await client.getIssueDetails(exactReference.key);
+      if (!r.ok) {
+        new Notice(errorMessage(r.error));
         return;
       }
+      editor.replaceSelection(
+        renderTemplate(this.settings.linkTemplate, escapeIssueDetailsForTemplate(r.value)),
+      );
+      return;
     }
 
-    const detectedKey = selection ? findKeyInText(selection) : null;
+    const detectedKey =
+      exactReference?.kind === "key" ? exactReference.key : selection ? findKeyInText(selection) : null;
 
     // Case A: we know the key. If the selection is just the bare key, render
     // the configured linkTemplate (we need the issue's summary etc.).
@@ -650,6 +662,36 @@ export default class JiraBasesPlugin extends Plugin {
       },
     });
     modal.open();
+  }
+
+  async toggleIssueKeyTemplateLink(editor: Editor): Promise<void> {
+    const baseUrl = this.settings.baseUrl;
+    if (!baseUrl) {
+      new Notice("Set your JIRA base URL in plugin settings.");
+      return;
+    }
+
+    const selection = this.expandSelectionToIssueReference(editor, baseUrl);
+    const reference = selection ? classifyIssueReference(selection, baseUrl) : null;
+    if (!reference) {
+      new Notice("Select a JIRA issue key or place the cursor on an exact JIRA link.");
+      return;
+    }
+
+    if (reference.kind === "link") {
+      editor.replaceSelection(reference.key);
+      return;
+    }
+
+    const result = await this.makeClient().getIssueDetails(reference.key);
+    if (!result.ok) {
+      new Notice(errorMessage(result.error));
+      return;
+    }
+
+    editor.replaceSelection(
+      renderTemplate(this.settings.linkTemplate, escapeIssueDetailsForTemplate(result.value)),
+    );
   }
 
   private collectStubIssues(): SearchIssue[] {

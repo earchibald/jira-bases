@@ -1,11 +1,15 @@
 import { describe, it, expect } from "vitest";
 import {
+  classifyIssueReference,
+  extractKeyFromWikilink,
   parseKeyOrUrl,
   extractKeyFromHref,
   findKeyInText,
   findKeyAtCol,
   findLinkAtCol,
+  findWikilinkAtCol,
   parseMarkdownLink,
+  parseWikilink,
 } from "./jira-key";
 
 describe("parseKeyOrUrl", () => {
@@ -114,6 +118,40 @@ describe("parseMarkdownLink", () => {
   });
 });
 
+describe("parseWikilink", () => {
+  it("parses a simple wikilink", () => {
+    expect(parseWikilink("[[JIRA/ABC-1 Summary]]")).toEqual({
+      target: "JIRA/ABC-1 Summary",
+      alias: null,
+    });
+  });
+
+  it("parses a wikilink with an alias", () => {
+    expect(parseWikilink("  [[JIRA/ABC-1 Summary|ABC-1]]  ")).toEqual({
+      target: "JIRA/ABC-1 Summary",
+      alias: "ABC-1",
+    });
+  });
+
+  it("returns null for bare text", () => {
+    expect(parseWikilink("ABC-1")).toBeNull();
+  });
+});
+
+describe("extractKeyFromWikilink", () => {
+  it("prefers a key in the target", () => {
+    expect(
+      extractKeyFromWikilink({ target: "JIRA/ABC-1 Summary", alias: "Something else" }),
+    ).toBe("ABC-1");
+  });
+
+  it("falls back to the alias", () => {
+    expect(extractKeyFromWikilink({ target: "JIRA/Some summary", alias: "ABC-1" })).toBe(
+      "ABC-1",
+    );
+  });
+});
+
 describe("findLinkAtCol", () => {
   const line = "text [SRE-1](https://jira.me.com/browse/SRE-1) more";
   //            0123456789012345678901234567890123456789012345678901
@@ -143,5 +181,50 @@ describe("findLinkAtCol", () => {
     const l = "[a](u1) [b](u2)";
     const hit = findLinkAtCol(l, 10);
     expect(hit).toEqual({ text: "b", url: "u2", start: 8, end: 15 });
+  });
+});
+
+describe("findWikilinkAtCol", () => {
+  const line = "text [[JIRA/SRE-1 Summary|SRE-1]] more";
+
+  it("matches when col is inside the wikilink", () => {
+    const hit = findWikilinkAtCol(line, 12);
+    expect(hit).toEqual({
+      target: "JIRA/SRE-1 Summary",
+      alias: "SRE-1",
+      start: 5,
+      end: 33,
+    });
+  });
+
+  it("returns null when col is outside any wikilink", () => {
+    expect(findWikilinkAtCol(line, 2)).toBeNull();
+    expect(findWikilinkAtCol(line, 38)).toBeNull();
+  });
+});
+
+describe("classifyIssueReference", () => {
+  const base = "https://jira.me.com";
+
+  it("classifies an exact bare key", () => {
+    expect(classifyIssueReference("ABC-1", base)).toEqual({ kind: "key", key: "ABC-1" });
+  });
+
+  it("classifies an exact markdown link", () => {
+    expect(classifyIssueReference("[ABC-1](https://jira.me.com/browse/ABC-1)", base)).toEqual({
+      kind: "link",
+      key: "ABC-1",
+    });
+  });
+
+  it("classifies an exact wikilink", () => {
+    expect(classifyIssueReference("[[JIRA/ABC-1 Summary|ABC-1]]", base)).toEqual({
+      kind: "link",
+      key: "ABC-1",
+    });
+  });
+
+  it("ignores arbitrary prose that only mentions a key", () => {
+    expect(classifyIssueReference("see ABC-1 today", base)).toBeNull();
   });
 });

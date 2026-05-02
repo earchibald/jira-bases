@@ -64,6 +64,16 @@ describe("resolveIssueKey", () => {
     expect(r).toBe("SRE-1");
   });
 
+  it("resolves a key from a wikilink under the cursor", () => {
+    const line = "text [[JIRA/SRE-1 Summary|SRE-1]] more";
+    const r = resolveIssueKey({
+      editor: fakeEditor({ cursor: { line: 0, ch: 12 }, lines: [line] }),
+      activeFileFrontmatter: null,
+      baseUrl: BASE,
+    });
+    expect(r).toBe("SRE-1");
+  });
+
   it("falls back to anchor text when href host doesn't match", () => {
     const line = `[ABC-2](https://elsewhere.com/x)`;
     const r = resolveIssueKey({
