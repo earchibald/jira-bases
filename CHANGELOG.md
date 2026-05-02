@@ -2,6 +2,13 @@
 
 All notable changes to **JIRA Bases** are recorded here. Releases follow [semver](https://semver.org/) and are auto-published to GitHub Releases when `manifest.json` / `package.json` versions change on `main`.
 
+## 1.2.0 — Toggle issue key / templated link (JB-21)
+
+- **New command.** Added **JIRA: Toggle issue key / templated link**, which flips the exact JIRA reference at the cursor between a bare issue key and the configured Link template output.
+- **Wikilink-aware rewrites.** Exact Obsidian wikilinks are now recognized alongside markdown links and bare keys, so templated stub-note links can round-trip cleanly.
+- **Safety hardening.** Rewrite-only detection now refuses markdown links whose href is not on the configured JIRA host, preventing unrelated links with key-looking text from being collapsed by the toggle flow.
+- **Downstream consistency.** Issue-key resolution and vault reference scanning now understand exact wikilinks too, so open/copy/sync flows stay aligned with the new command behavior.
+
 ## 1.1.1 — README — auto-lookup as a passive flow (JB-17)
 
 - **Docs.** Promotes auto-lookup-on-type from a one-line settings entry to a first-class flow in the README. Adds an Overview bullet, a Quick Start subsection, a Reference deep-dive (what it scans, what it skips, link styles, idle-pause tuning, interaction with stub sync and the JB-15 URL debounce), and a Troubleshooting entry covering the common "key didn't get linked" gotchas. No code changes.
