@@ -2,6 +2,12 @@
 
 All notable changes to **JIRA Bases** are recorded here. Releases follow [semver](https://semver.org/) and are auto-published to GitHub Releases when the `manifest.json` version changes on `main`.
 
+## 1.2.1 — Partial template-wikilink selection toggle fix (JB-21)
+
+- **Fix — partial selection expansion.** The shared reference-expansion path now widens a single-line partial selection that sits entirely inside a rewritable JIRA reference to the full span before classification.
+- **Templated wikilinks now toggle reliably.** Selecting only part of a template-generated Obsidian wikilink no longer misses the match; the toggle command resolves the enclosing wikilink and flips it back to the bare issue key as expected.
+- **Same-line safety.** Auto-expansion still stays bounded to one exact containing reference on one line, so unrelated prose selections and multi-line selections are left alone.
+
 ## 1.2.0 — Toggle issue key / templated link (JB-21)
 
 - **New command.** Added **JIRA: Toggle issue key / templated link**, which flips the exact JIRA reference at the cursor between a bare issue key and the configured Link template output.

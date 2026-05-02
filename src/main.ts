@@ -40,9 +40,12 @@ import { registerHoverPreview } from "./hover-preview";
 import { LookupModal } from "./lookup-modal";
 import {
   classifyRewriteIssueReference,
+  findKeyContainingRange,
   findKeyAtCol,
   findKeyInText,
+  findLinkContainingRange,
   findLinkAtCol,
+  findWikilinkContainingRange,
   findWikilinkAtCol,
 } from "./jira-key";
 import { CommentIssueSuggestModal } from "./comment-issue-modal";
@@ -553,7 +556,42 @@ export default class JiraBasesPlugin extends Plugin {
 
   private expandSelectionToIssueReference(editor: Editor, baseUrl: string): string {
     let selection = editor.getSelection();
-    if (selection) return selection;
+    if (selection) {
+      const from = editor.getCursor("from");
+      const to = editor.getCursor("to");
+      if (from.line === to.line) {
+        const line = editor.getLine(from.line);
+        const selectRange = (start: number, end: number): string => {
+          editor.setSelection(
+            { line: from.line, ch: start },
+            { line: from.line, ch: end },
+          );
+          return line.slice(start, end);
+        };
+
+        const markdownLink = findLinkContainingRange(line, from.ch, to.ch);
+        if (
+          markdownLink &&
+          classifyRewriteIssueReference(line.slice(markdownLink.start, markdownLink.end), baseUrl)
+        ) {
+          return selectRange(markdownLink.start, markdownLink.end);
+        }
+
+        const wikilink = findWikilinkContainingRange(line, from.ch, to.ch);
+        if (
+          wikilink &&
+          classifyRewriteIssueReference(line.slice(wikilink.start, wikilink.end), baseUrl)
+        ) {
+          return selectRange(wikilink.start, wikilink.end);
+        }
+
+        const key = findKeyContainingRange(line, from.ch, to.ch);
+        if (key) {
+          return selectRange(key.start, key.end);
+        }
+      }
+      return selection;
+    }
 
     const cursor = editor.getCursor();
     const line = editor.getLine(cursor.line);

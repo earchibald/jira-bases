@@ -74,6 +74,23 @@ export function findLinkAtCol(
   return null;
 }
 
+export function findLinkContainingRange(
+  line: string,
+  startCh: number,
+  endCh: number,
+): { text: string; url: string; start: number; end: number } | null {
+  MD_LINK_GLOBAL_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = MD_LINK_GLOBAL_RE.exec(line))) {
+    const start = m.index;
+    const end = start + m[0].length;
+    if (startCh >= start && endCh <= end) {
+      return { text: m[1], url: m[2], start, end };
+    }
+  }
+  return null;
+}
+
 export function findWikilinkAtCol(
   line: string,
   col: number,
@@ -84,6 +101,23 @@ export function findWikilinkAtCol(
     const start = m.index;
     const end = start + m[0].length;
     if (col >= start && col <= end) {
+      return { target: m[1], alias: m[2] ?? null, start, end };
+    }
+  }
+  return null;
+}
+
+export function findWikilinkContainingRange(
+  line: string,
+  startCh: number,
+  endCh: number,
+): { target: string; alias: string | null; start: number; end: number } | null {
+  WIKILINK_GLOBAL_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = WIKILINK_GLOBAL_RE.exec(line))) {
+    const start = m.index;
+    const end = start + m[0].length;
+    if (startCh >= start && endCh <= end) {
       return { target: m[1], alias: m[2] ?? null, start, end };
     }
   }
@@ -156,6 +190,21 @@ export function findKeyAtCol(
     const start = m.index;
     const end = start + m[0].length;
     if (col >= start && col <= end) return { key: m[0], start, end };
+  }
+  return null;
+}
+
+export function findKeyContainingRange(
+  line: string,
+  startCh: number,
+  endCh: number,
+): { key: string; start: number; end: number } | null {
+  KEY_GLOBAL_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = KEY_GLOBAL_RE.exec(line))) {
+    const start = m.index;
+    const end = start + m[0].length;
+    if (startCh >= start && endCh <= end) return { key: m[0], start, end };
   }
   return null;
 }
