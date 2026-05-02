@@ -13,6 +13,19 @@ export class Notice {
 
 export class App {}
 
+export class Plugin {
+  app: unknown;
+  manifest: unknown;
+  constructor(app: unknown, manifest?: unknown) {
+    this.app = app;
+    this.manifest = manifest;
+  }
+}
+
+export async function requestUrl(_request: unknown) {
+  throw new Error("requestUrl mock not implemented");
+}
+
 export class PluginSettingTab {
   app: unknown;
   containerEl = {

@@ -3,11 +3,14 @@ import {
   classifyIssueReference,
   classifyRewriteIssueReference,
   extractKeyFromWikilink,
+  findKeyContainingRange,
   parseKeyOrUrl,
   extractKeyFromHref,
   findKeyInText,
   findKeyAtCol,
+  findLinkContainingRange,
   findLinkAtCol,
+  findWikilinkContainingRange,
   findWikilinkAtCol,
   parseMarkdownLink,
   parseWikilink,
@@ -185,6 +188,33 @@ describe("findLinkAtCol", () => {
   });
 });
 
+describe("findLinkContainingRange", () => {
+  const line = "text [SRE-1](https://jira.me.com/browse/SRE-1) more";
+
+  it("matches an exact link selection", () => {
+    expect(findLinkContainingRange(line, 5, 46)).toEqual({
+      text: "SRE-1",
+      url: "https://jira.me.com/browse/SRE-1",
+      start: 5,
+      end: 46,
+    });
+  });
+
+  it("matches a partial selection inside the link", () => {
+    expect(findLinkContainingRange(line, 12, 18)).toEqual({
+      text: "SRE-1",
+      url: "https://jira.me.com/browse/SRE-1",
+      start: 5,
+      end: 46,
+    });
+  });
+
+  it("returns null when the selection extends outside the link", () => {
+    expect(findLinkContainingRange(line, 2, 10)).toBeNull();
+    expect(findLinkContainingRange(line, 5, 47)).toBeNull();
+  });
+});
+
 describe("findWikilinkAtCol", () => {
   const line = "text [[JIRA/SRE-1 Summary|SRE-1]] more";
 
@@ -201,6 +231,58 @@ describe("findWikilinkAtCol", () => {
   it("returns null when col is outside any wikilink", () => {
     expect(findWikilinkAtCol(line, 2)).toBeNull();
     expect(findWikilinkAtCol(line, 38)).toBeNull();
+  });
+});
+
+describe("findWikilinkContainingRange", () => {
+  const line = "text [[JIRA/SRE-1 Summary|SRE-1]] more";
+
+  it("matches an exact wikilink selection", () => {
+    expect(findWikilinkContainingRange(line, 5, 33)).toEqual({
+      target: "JIRA/SRE-1 Summary",
+      alias: "SRE-1",
+      start: 5,
+      end: 33,
+    });
+  });
+
+  it("matches a partial selection inside the wikilink", () => {
+    expect(findWikilinkContainingRange(line, 15, 24)).toEqual({
+      target: "JIRA/SRE-1 Summary",
+      alias: "SRE-1",
+      start: 5,
+      end: 33,
+    });
+  });
+
+  it("returns null when the selection extends outside the wikilink", () => {
+    expect(findWikilinkContainingRange(line, 2, 12)).toBeNull();
+    expect(findWikilinkContainingRange(line, 5, 34)).toBeNull();
+  });
+});
+
+describe("findKeyContainingRange", () => {
+  const line = "fix SRE-1235 today";
+
+  it("matches an exact key selection", () => {
+    expect(findKeyContainingRange(line, 4, 12)).toEqual({
+      key: "SRE-1235",
+      start: 4,
+      end: 12,
+    });
+  });
+
+  it("matches a partial selection inside the key", () => {
+    expect(findKeyContainingRange(line, 6, 10)).toEqual({
+      key: "SRE-1235",
+      start: 4,
+      end: 12,
+    });
+  });
+
+  it("returns null when the selection extends outside the key", () => {
+    expect(findKeyContainingRange(line, 2, 8)).toBeNull();
+    expect(findKeyContainingRange(line, 4, 13)).toBeNull();
   });
 });
 
