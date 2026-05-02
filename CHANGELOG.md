@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to **JIRA Bases** are recorded here. Releases follow [semver](https://semver.org/) and are auto-published to GitHub Releases when `manifest.json` / `package.json` versions change on `main`.
+All notable changes to **JIRA Bases** are recorded here. Releases follow [semver](https://semver.org/) and are auto-published to GitHub Releases when the `manifest.json` version changes on `main`.
 
 ## 1.2.0 — Toggle issue key / templated link (JB-21)
 
