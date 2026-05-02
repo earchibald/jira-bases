@@ -39,7 +39,7 @@ import { createIssueService, IssueService } from "./issue-service";
 import { registerHoverPreview } from "./hover-preview";
 import { LookupModal } from "./lookup-modal";
 import {
-  classifyIssueReference,
+  classifyRewriteIssueReference,
   findKeyAtCol,
   findKeyInText,
   findLinkAtCol,
@@ -568,13 +568,16 @@ export default class JiraBasesPlugin extends Plugin {
     const markdownLink = findLinkAtCol(line, cursor.ch);
     if (
       markdownLink &&
-      classifyIssueReference(line.slice(markdownLink.start, markdownLink.end), baseUrl)
+      classifyRewriteIssueReference(line.slice(markdownLink.start, markdownLink.end), baseUrl)
     ) {
       return selectRange(markdownLink.start, markdownLink.end);
     }
 
     const wikilink = findWikilinkAtCol(line, cursor.ch);
-    if (wikilink && classifyIssueReference(line.slice(wikilink.start, wikilink.end), baseUrl)) {
+    if (
+      wikilink &&
+      classifyRewriteIssueReference(line.slice(wikilink.start, wikilink.end), baseUrl)
+    ) {
       return selectRange(wikilink.start, wikilink.end);
     }
 
@@ -602,7 +605,7 @@ export default class JiraBasesPlugin extends Plugin {
 
     // Case A0: selection is an existing markdown link or wikilink pointing at
     // a JIRA issue — reformat it to the configured linkTemplate.
-    const exactReference = selection ? classifyIssueReference(selection, baseUrl) : null;
+    const exactReference = selection ? classifyRewriteIssueReference(selection, baseUrl) : null;
     if (exactReference?.kind === "link") {
       const r = await client.getIssueDetails(exactReference.key);
       if (!r.ok) {
@@ -672,7 +675,7 @@ export default class JiraBasesPlugin extends Plugin {
     }
 
     const selection = this.expandSelectionToIssueReference(editor, baseUrl);
-    const reference = selection ? classifyIssueReference(selection, baseUrl) : null;
+    const reference = selection ? classifyRewriteIssueReference(selection, baseUrl) : null;
     if (!reference) {
       new Notice("Select a JIRA issue key or place the cursor on an exact JIRA link.");
       return;

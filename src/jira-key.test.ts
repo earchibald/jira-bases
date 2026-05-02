@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   classifyIssueReference,
+  classifyRewriteIssueReference,
   extractKeyFromWikilink,
   parseKeyOrUrl,
   extractKeyFromHref,
@@ -226,5 +227,38 @@ describe("classifyIssueReference", () => {
 
   it("ignores arbitrary prose that only mentions a key", () => {
     expect(classifyIssueReference("see ABC-1 today", base)).toBeNull();
+  });
+});
+
+describe("classifyRewriteIssueReference", () => {
+  const base = "https://jira.me.com";
+
+  it("classifies an exact bare key", () => {
+    expect(classifyRewriteIssueReference("ABC-1", base)).toEqual({
+      kind: "key",
+      key: "ABC-1",
+    });
+  });
+
+  it("classifies an exact JIRA markdown link", () => {
+    expect(
+      classifyRewriteIssueReference("[ABC-1](https://jira.me.com/browse/ABC-1)", base),
+    ).toEqual({
+      kind: "link",
+      key: "ABC-1",
+    });
+  });
+
+  it("rejects markdown links whose href is not the configured JIRA host", () => {
+    expect(
+      classifyRewriteIssueReference("[ABC-1](https://elsewhere.example.com/docs/ABC-1)", base),
+    ).toBeNull();
+  });
+
+  it("classifies an exact wikilink", () => {
+    expect(classifyRewriteIssueReference("[[JIRA/ABC-1 Summary|ABC-1]]", base)).toEqual({
+      kind: "link",
+      key: "ABC-1",
+    });
   });
 });

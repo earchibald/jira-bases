@@ -115,6 +115,32 @@ export function classifyIssueReference(
   return null;
 }
 
+export function classifyRewriteIssueReference(
+  text: string,
+  baseUrl: string,
+): { kind: "key" | "link"; key: string } | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  if (KEY_RE.test(trimmed)) {
+    return { kind: "key", key: trimmed };
+  }
+
+  const markdown = parseMarkdownLink(trimmed);
+  if (markdown) {
+    const key = extractKeyFromHref(markdown.url, baseUrl);
+    if (key) return { kind: "link", key };
+    return null;
+  }
+
+  const wikilink = parseWikilink(trimmed);
+  if (wikilink) {
+    const key = extractKeyFromWikilink(wikilink);
+    if (key) return { kind: "link", key };
+  }
+
+  return null;
+}
+
 /**
  * Find a JIRA key whose span covers `col` in `line`. The cursor is considered
  * "on" a key when it sits at the start, end, or anywhere inside the key. Returns
