@@ -146,6 +146,7 @@ describe("hover-preview boundary detection", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     appendChildSpy.mockRestore();
   });
 
@@ -415,6 +416,17 @@ describe("hover-preview boundary detection", () => {
     expect(popover.getAttribute("data-jb-anchor-key")).toBe("ABC-123");
   });
 
+  it("does not resolve non-JIRA anchors from visible text alone", () => {
+    registerHoverPreview(plugin, service, () => BASE_URL);
+
+    const anchor = createAnchor("ABC-123 planning doc", "https://example.com/docs/abc-123");
+    container.appendChild(anchor);
+
+    anchor.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+
+    expect(document.querySelector(".jb-hover-popover")).toBeNull();
+  });
+
   it("resolves rendered internal links through stub frontmatter", () => {
     plugin = createMockPlugin({
       activeFilePath: "Notes/Daily.md",
@@ -446,6 +458,27 @@ describe("hover-preview boundary detection", () => {
     const popover = document.querySelector(".jb-hover-popover") as HTMLElement;
     expect(popover).not.toBeNull();
     expect(popover.getAttribute("data-jb-anchor-key")).toBe("ABC-123");
+  });
+
+  it("does not resolve arbitrary note links from a basename-like key", () => {
+    plugin = createMockPlugin({
+      activeFilePath: "Notes/Daily.md",
+      resolvedLinks: {
+        "Projects/ABC-123 Retrospective": {
+          path: "Projects/ABC-123 Retrospective.md",
+        },
+      },
+    });
+    registerHoverPreview(plugin, service, () => BASE_URL);
+
+    const anchor = createAnchor("Sprint retrospective", "app://obsidian.md/open");
+    anchor.className = "internal-link";
+    anchor.setAttribute("data-href", "Projects/ABC-123 Retrospective");
+    container.appendChild(anchor);
+
+    anchor.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+
+    expect(document.querySelector(".jb-hover-popover")).toBeNull();
   });
 
   it("resolves live preview internal links when alias text hides the key", () => {
@@ -480,5 +513,85 @@ describe("hover-preview boundary detection", () => {
     const popover = document.querySelector(".jb-hover-popover") as HTMLElement;
     expect(popover).not.toBeNull();
     expect(popover.getAttribute("data-jb-anchor-key")).toBe("ABC-123");
+  });
+
+  it("ignores embeds even when they point at an issue stub", () => {
+    plugin = createMockPlugin({
+      activeFilePath: "Notes/Daily.md",
+      resolvedLinks: {
+        "JIRA/ABC-123 Test issue": {
+          path: "JIRA/ABC-123 Test issue.md",
+          jiraKey: "ABC-123",
+        },
+      },
+    });
+    registerHoverPreview(plugin, service, () => BASE_URL);
+
+    const embed = document.createElement("div");
+    embed.className = "internal-embed";
+    embed.setAttribute("data-href", "JIRA/ABC-123 Test issue");
+    const child = document.createElement("div");
+    embed.appendChild(child);
+    container.appendChild(embed);
+
+    child.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+
+    expect(document.querySelector(".jb-hover-popover")).toBeNull();
+  });
+
+  it("cleans up anchor mouseenter handlers across repeated hover cycles", () => {
+    vi.useFakeTimers();
+    registerHoverPreview(plugin, service, () => BASE_URL);
+
+    const anchor = createAnchor("ABC-123", `${BASE_URL}/browse/ABC-123`);
+    container.appendChild(anchor);
+
+    mockElementRect(anchor, {
+      left: 100,
+      top: 100,
+      right: 180,
+      bottom: 120,
+      width: 80,
+      height: 20,
+    });
+
+    let mouseenterAdds = 0;
+    let mouseenterRemoves = 0;
+    const originalAdd = anchor.addEventListener.bind(anchor);
+    const originalRemove = anchor.removeEventListener.bind(anchor);
+
+    vi.spyOn(anchor, "addEventListener").mockImplementation(
+      ((type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => {
+        if (type === "mouseenter") mouseenterAdds++;
+        originalAdd(type, listener, options);
+      }) as typeof anchor.addEventListener,
+    );
+    vi.spyOn(anchor, "removeEventListener").mockImplementation(
+      ((type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions) => {
+        if (type === "mouseenter") mouseenterRemoves++;
+        originalRemove(type, listener, options);
+      }) as typeof anchor.removeEventListener,
+    );
+
+    for (let i = 0; i < 2; i++) {
+      anchor.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+      const popover = document.querySelector(".jb-hover-popover") as HTMLElement;
+      expect(popover).not.toBeNull();
+
+      vi.spyOn(anchor, "matches").mockImplementation((selector: string) =>
+        selector === ":hover" ? false : HTMLElement.prototype.matches.call(anchor, selector),
+      );
+      vi.spyOn(popover, "matches").mockImplementation((selector: string) =>
+        selector === ":hover" ? false : HTMLElement.prototype.matches.call(popover, selector),
+      );
+
+      anchor.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));
+      vi.advanceTimersByTime(250);
+
+      expect(document.querySelector(".jb-hover-popover")).toBeNull();
+      expect(anchor.getAttribute("data-jb-hover-bound")).toBeNull();
+    }
+
+    expect(mouseenterAdds).toBe(mouseenterRemoves);
   });
 });

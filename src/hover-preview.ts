@@ -6,6 +6,7 @@ import { renderIssue } from "./issue-preview-view";
 const POPOVER_CLASS = "jb-hover-popover";
 const ATTR_BOUND = "data-jb-hover-bound";
 const EXACT_KEY_RE = /^[A-Z][A-Z0-9]+-\d+$/;
+const INTERNAL_LINK_SELECTOR = "a.internal-link[data-href], span.cm-link[data-href]";
 
 export function registerHoverPreview(
   plugin: Plugin,
@@ -23,9 +24,6 @@ export function registerHoverPreview(
     if (found.anchorEl.getAttribute(ATTR_BOUND) === "1") return;
 
     found.anchorEl.setAttribute(ATTR_BOUND, "1");
-    found.anchorEl.addEventListener("mouseenter", () =>
-      openPopover(found.anchorEl, found.key, service, baseUrl),
-    );
     openPopover(found.anchorEl, found.key, service, baseUrl);
   });
 }
@@ -35,7 +33,7 @@ function findKeyAt(
   target: HTMLElement,
   baseUrl: string,
 ): { key: string; anchorEl: HTMLElement } | null {
-  const internalLink = target.closest<HTMLElement>("[data-href]");
+  const internalLink = target.closest<HTMLElement>(INTERNAL_LINK_SELECTOR);
   if (internalLink) {
     const key = extractKeyFromInternalLink(plugin, internalLink);
     if (key) return { key, anchorEl: internalLink };
@@ -44,7 +42,7 @@ function findKeyAt(
   // Reading view: real <a href="…/browse/KEY">
   const a = target.closest<HTMLAnchorElement>("a[href]");
   if (a) {
-    const k = extractKeyFromHref(a.href, baseUrl) ?? findKeyInText(a.textContent ?? "");
+    const k = extractKeyFromHref(a.href, baseUrl);
     if (k) return { key: k, anchorEl: a };
   }
   // Live Preview: hover on a span.cm-link decoration. The URL is hidden;
@@ -63,16 +61,15 @@ function extractKeyFromInternalLink(plugin: Plugin, linkEl: HTMLElement): string
 
   const sourcePath = plugin.app.workspace.getActiveFile()?.path ?? "";
   const file = plugin.app.metadataCache.getFirstLinkpathDest(linkTarget, sourcePath);
-  if (file) {
-    const rawKey = plugin.app.metadataCache.getFileCache(file)?.frontmatter?.jira_key;
-    if (typeof rawKey === "string") {
-      const key = rawKey.trim();
-      if (EXACT_KEY_RE.test(key)) return key;
-    }
-    return findKeyInText(file.basename) ?? findKeyInText(linkTarget);
-  }
+  if (!file) return null;
 
-  return findKeyInText(linkTarget) ?? findKeyInText(linkEl.textContent ?? "");
+  // Only trust explicit stub metadata here; guessing from filenames or alias
+  // text misclassifies arbitrary note links as JIRA issues.
+  const rawKey = plugin.app.metadataCache.getFileCache(file)?.frontmatter?.jira_key;
+  if (typeof rawKey !== "string") return null;
+
+  const key = rawKey.trim();
+  return EXACT_KEY_RE.test(key) ? key : null;
 }
 
 function openPopover(
