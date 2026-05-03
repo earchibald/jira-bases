@@ -6,13 +6,43 @@ import type { IssueService, LookupResult } from "./issue-service";
 
 const BASE_URL = "https://jira.example.com";
 
-function createMockPlugin(): Plugin {
+function createMockPlugin(opts?: {
+  activeFilePath?: string;
+  resolvedLinks?: Record<string, { path: string; basename?: string; jiraKey?: string }>;
+}): Plugin {
   const listeners: Array<{
     el: Document | HTMLElement;
     type: string;
     handler: EventListener;
   }> = [];
+  const resolvedLinks = opts?.resolvedLinks ?? {};
   return {
+    app: {
+      metadataCache: {
+        getFirstLinkpathDest(linkpath: string) {
+          const hit = resolvedLinks[linkpath];
+          if (!hit) return null;
+          const basename =
+            hit.basename ??
+            hit.path
+              .split("/")
+              .pop()
+              ?.replace(/\.md$/, "") ??
+            "";
+          return { path: hit.path, basename } as any;
+        },
+        getFileCache(file: { path: string }) {
+          const hit = Object.values(resolvedLinks).find((entry) => entry.path === file.path);
+          if (!hit?.jiraKey) return null;
+          return { frontmatter: { jira_key: hit.jiraKey } } as any;
+        },
+      },
+      workspace: {
+        getActiveFile() {
+          return opts?.activeFilePath ? ({ path: opts.activeFilePath } as any) : null;
+        },
+      },
+    },
     registerDomEvent(el: Document | HTMLElement, type: string, handler: EventListener) {
       listeners.push({ el, type, handler });
       el.addEventListener(type, handler);
@@ -367,6 +397,73 @@ describe("hover-preview boundary detection", () => {
     const span = document.createElement("span");
     span.className = "cm-link";
     span.textContent = "ABC-123";
+    container.appendChild(span);
+
+    mockElementRect(span, {
+      left: 100,
+      top: 100,
+      right: 180,
+      bottom: 120,
+      width: 80,
+      height: 20,
+    });
+
+    span.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+
+    const popover = document.querySelector(".jb-hover-popover") as HTMLElement;
+    expect(popover).not.toBeNull();
+    expect(popover.getAttribute("data-jb-anchor-key")).toBe("ABC-123");
+  });
+
+  it("resolves rendered internal links through stub frontmatter", () => {
+    plugin = createMockPlugin({
+      activeFilePath: "Notes/Daily.md",
+      resolvedLinks: {
+        "JIRA/ABC-123 Test issue": {
+          path: "JIRA/ABC-123 Test issue.md",
+          jiraKey: "ABC-123",
+        },
+      },
+    });
+    registerHoverPreview(plugin, service, () => BASE_URL);
+
+    const anchor = createAnchor("Test issue", "app://obsidian.md/open");
+    anchor.className = "internal-link";
+    anchor.setAttribute("data-href", "JIRA/ABC-123 Test issue");
+    container.appendChild(anchor);
+
+    mockElementRect(anchor, {
+      left: 100,
+      top: 100,
+      right: 180,
+      bottom: 120,
+      width: 80,
+      height: 20,
+    });
+
+    anchor.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+
+    const popover = document.querySelector(".jb-hover-popover") as HTMLElement;
+    expect(popover).not.toBeNull();
+    expect(popover.getAttribute("data-jb-anchor-key")).toBe("ABC-123");
+  });
+
+  it("resolves live preview internal links when alias text hides the key", () => {
+    plugin = createMockPlugin({
+      activeFilePath: "Notes/Daily.md",
+      resolvedLinks: {
+        "JIRA/ABC-123 Test issue": {
+          path: "JIRA/ABC-123 Test issue.md",
+          jiraKey: "ABC-123",
+        },
+      },
+    });
+    registerHoverPreview(plugin, service, () => BASE_URL);
+
+    const span = document.createElement("span");
+    span.className = "cm-link";
+    span.textContent = "Test issue";
+    span.setAttribute("data-href", "JIRA/ABC-123 Test issue");
     container.appendChild(span);
 
     mockElementRect(span, {

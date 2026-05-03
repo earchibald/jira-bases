@@ -1,11 +1,11 @@
 import { Plugin } from "obsidian";
 import type { IssueService } from "./issue-service";
-import { extractKeyFromHref } from "./jira-key";
+import { extractKeyFromHref, findKeyInText } from "./jira-key";
 import { renderIssue } from "./issue-preview-view";
 
 const POPOVER_CLASS = "jb-hover-popover";
 const ATTR_BOUND = "data-jb-hover-bound";
-const KEY_RE = /\b([A-Z][A-Z0-9]+-\d+)\b/;
+const EXACT_KEY_RE = /^[A-Z][A-Z0-9]+-\d+$/;
 
 export function registerHoverPreview(
   plugin: Plugin,
@@ -18,7 +18,7 @@ export function registerHoverPreview(
     const baseUrl = getBaseUrl();
     if (!baseUrl) return;
 
-    const found = findKeyAt(target, baseUrl);
+    const found = findKeyAt(plugin, target, baseUrl);
     if (!found) return;
     if (found.anchorEl.getAttribute(ATTR_BOUND) === "1") return;
 
@@ -31,23 +31,48 @@ export function registerHoverPreview(
 }
 
 function findKeyAt(
+  plugin: Plugin,
   target: HTMLElement,
   baseUrl: string,
 ): { key: string; anchorEl: HTMLElement } | null {
+  const internalLink = target.closest<HTMLElement>("[data-href]");
+  if (internalLink) {
+    const key = extractKeyFromInternalLink(plugin, internalLink);
+    if (key) return { key, anchorEl: internalLink };
+  }
+
   // Reading view: real <a href="…/browse/KEY">
   const a = target.closest<HTMLAnchorElement>("a[href]");
   if (a) {
-    const k = extractKeyFromHref(a.href, baseUrl);
+    const k = extractKeyFromHref(a.href, baseUrl) ?? findKeyInText(a.textContent ?? "");
     if (k) return { key: k, anchorEl: a };
   }
   // Live Preview: hover on a span.cm-link decoration. The URL is hidden;
   // extract a JIRA key from the visible link text.
   const linkSpan = target.closest<HTMLElement>("span.cm-link");
   if (linkSpan) {
-    const m = (linkSpan.textContent ?? "").match(KEY_RE);
-    if (m) return { key: m[1], anchorEl: linkSpan };
+    const key = findKeyInText(linkSpan.textContent ?? "");
+    if (key) return { key, anchorEl: linkSpan };
   }
   return null;
+}
+
+function extractKeyFromInternalLink(plugin: Plugin, linkEl: HTMLElement): string | null {
+  const linkTarget = linkEl.getAttribute("data-href")?.trim();
+  if (!linkTarget) return null;
+
+  const sourcePath = plugin.app.workspace.getActiveFile()?.path ?? "";
+  const file = plugin.app.metadataCache.getFirstLinkpathDest(linkTarget, sourcePath);
+  if (file) {
+    const rawKey = plugin.app.metadataCache.getFileCache(file)?.frontmatter?.jira_key;
+    if (typeof rawKey === "string") {
+      const key = rawKey.trim();
+      if (EXACT_KEY_RE.test(key)) return key;
+    }
+    return findKeyInText(file.basename) ?? findKeyInText(linkTarget);
+  }
+
+  return findKeyInText(linkTarget) ?? findKeyInText(linkEl.textContent ?? "");
 }
 
 function openPopover(
